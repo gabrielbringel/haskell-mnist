@@ -202,6 +202,34 @@ prop_network_backward_fd w1 w2 x dZ2 = and [ close (Mat.mindex dW1 i j) (numeric
               else Mat.mindex w1 i' j')
       in (lossAt (perturb 1) - lossAt (perturb (-1))) / (2 * eps)
 
+-- | Toda entrada do dataset é contada exatamente uma vez: a soma de todas as
+-- células da matriz é o tamanho do dataset.
+prop_confusion_total :: Mat 3 4 Double -> Mat 2 3 Double -> [Vec 4 Double] -> [Int] -> Bool
+prop_confusion_total w1 w2 xs ls =
+  sum cm == length dataset
+  where
+    net = Network.Network
+            { Network.hidden = Layer.Layer w1 (Vec.replicate 0)
+            , Network.output = Layer.Layer w2 (Vec.replicate 0)
+            } :: Network.Network 4 3 2
+    dataset = zip xs (map (`mod` 2) ls)
+    cm      = Network.confusionMatrix net dataset
+
+-- | A diagonal da matriz é exatamente o número de predições corretas — ligando
+-- a matriz de confusão a 'predict'/'accuracy'.
+prop_confusion_diagonal :: Mat 3 4 Double -> Mat 2 3 Double -> [Vec 4 Double] -> [Int] -> Bool
+prop_confusion_diagonal w1 w2 xs ls =
+  diag == length (filter correct dataset)
+  where
+    net = Network.Network
+            { Network.hidden = Layer.Layer w1 (Vec.replicate 0)
+            , Network.output = Layer.Layer w2 (Vec.replicate 0)
+            } :: Network.Network 4 3 2
+    dataset          = zip xs (map (`mod` 2) ls)
+    cm               = Network.confusionMatrix net dataset
+    diag             = sum [ Mat.mindex cm k k | k <- [0, 1] ]
+    correct (x, lbl) = Network.predict net x == lbl
+
 -- Runner ---------------------------------------------------------------------
 
 main :: IO ()
@@ -221,5 +249,7 @@ main = do
     , quickCheckResult prop_network_forward_zero
     , quickCheckResult prop_network_backward_zero
     , quickCheckResult prop_network_backward_fd
+    , quickCheckResult prop_confusion_total
+    , quickCheckResult prop_confusion_diagonal
     ]
   unless (all isSuccess results) exitFailure

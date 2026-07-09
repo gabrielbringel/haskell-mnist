@@ -15,6 +15,7 @@ module Network
   , networkBackward
   , predict
   , accuracy
+  , confusionMatrix
   ) where
 
 import           Data.List    (maximumBy)
@@ -25,6 +26,7 @@ import           Activation   (relu, relu')
 import           Layer        (Layer (..))
 import qualified Layer
 import           Mat          (Mat)
+import qualified Mat
 import           Vec          (Vec)
 import qualified Vec
 
@@ -109,3 +111,20 @@ accuracy net dataset
 -- | Index of the maximum element of a vector (ties broken towards the last).
 argmax :: Vec n Double -> Int
 argmax v = snd (maximumBy (comparing fst) (zip (Vec.toList v) [0 ..]))
+
+-- | Matriz de confusão sobre um conjunto rotulado. A entrada @(t, p)@ é o
+-- número de exemplos cujo rótulo verdadeiro é @t@ e cuja predição é @p@.
+-- Linhas indexam o rótulo real; colunas, o previsto. A diagonal são os acertos.
+--
+-- As predições são calculadas uma única vez (a lista @preds@ é compartilhada
+-- entre todas as células via laziness), então o custo é @n@ forward passes mais
+-- a contagem @O(o² · n)@ sobre pares já materializados.
+confusionMatrix
+  :: (KnownNat i, KnownNat h, KnownNat o)
+  => Network i h o
+  -> [(Vec i Double, Int)]     -- ^ exemplos rotulados (rótulo = índice de classe)
+  -> Mat o o Int
+confusionMatrix net dataset = Mat.mgenerate count
+  where
+    preds       = [ (label, predict net x) | (x, label) <- dataset ]
+    count t p   = length (filter (== (t, p)) preds)

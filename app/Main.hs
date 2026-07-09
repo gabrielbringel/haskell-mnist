@@ -3,10 +3,12 @@
 module Main (main) where
 
 import           Control.Monad (foldM)
+import           Data.List     (intercalate)
 import           System.Random (mkStdGen)
 import           Text.Printf   (printf)
 
 import           Init          (randomNetwork)
+import qualified Mat
 import qualified MNIST
 import           Network       (Network)
 import qualified Network
@@ -53,7 +55,7 @@ main = do
     trainSize epochs learningRate
   printf "Initial test accuracy: %.2f%%\n" (100 * Network.accuracy net0 testSet)
 
-  _ <- foldM
+  netF <- foldM
     (\net e -> do
         let (net', loss) = Train.trainEpoch learningRate net trainExamples
             acc          = Network.accuracy net' testSet
@@ -63,4 +65,25 @@ main = do
     net0
     [1 .. epochs]
 
-  pure ()
+  let cm = Network.confusionMatrix netF testSet
+  putStrLn "\nMatriz de confusão (linha = rótulo real, coluna = previsto):"
+  putStr (renderConfusion cm)
+  writeFile "results/confusion-matrix.csv" (toCSV cm)
+  putStrLn "Escrito: results/confusion-matrix.csv"
+
+-- | CSV 10×10 puro: linha = rótulo real (0..9), coluna = previsto (0..9),
+-- sem cabeçalho nem coluna de índice — direto para matplotlib/numpy.
+toCSV :: Mat.Mat Output Output Int -> String
+toCSV cm = unlines
+  [ intercalate "," [ show (Mat.mindex cm t p) | p <- [0 .. n - 1] ]
+  | t <- [0 .. n - 1] ]
+  where n = Mat.mrows cm
+
+-- | Render legível para o stdout, colunas alinhadas.
+renderConfusion :: Mat.Mat Output Output Int -> String
+renderConfusion cm = unlines
+  [ concatMap (pad . show . Mat.mindex cm t) [0 .. n - 1]
+  | t <- [0 .. n - 1] ]
+  where
+    n       = Mat.mrows cm
+    pad s   = replicate (6 - length s) ' ' ++ s
