@@ -1,0 +1,6 @@
+# GHC 9.4.8 — both `vector` and `QuickCheck` ship with this snapshot, so no
+# extra-deps are required.
+resolver: lts-21.25
+
+packages:
+- .

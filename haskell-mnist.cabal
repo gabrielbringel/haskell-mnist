@@ -1,0 +1,51 @@
+cabal-version:      2.4
+name:               haskell-mnist
+version:            0.1.0.0
+synopsis:           Feedforward MNIST neural network with dependently-typed dimensions
+license:            MIT
+license-file:       LICENSE
+author:             Gabriel Bringel
+build-type:         Simple
+
+-- Shared language settings. Every dimension lives at the type level, so the
+-- DataKinds / GADTs / KindSignatures family is enabled package-wide.
+common shared
+    default-language: Haskell2010
+    default-extensions:
+        DataKinds
+        GADTs
+        KindSignatures
+        TypeFamilies
+        TypeOperators
+        ScopedTypeVariables
+        FlexibleContexts
+        FlexibleInstances
+        RankNTypes
+    ghc-options:      -Wall
+
+library
+    import:           shared
+    hs-source-dirs:   src
+    -- Only the foundation modules are wired up so far; Layer, Network, Train,
+    -- etc. are still empty stubs and will be added as they are implemented.
+    exposed-modules:
+        Vec
+        Mat
+        Activation
+        Loss
+        Layer
+        Network
+    build-depends:
+        base   >=4.17 && <5,
+        vector
+
+test-suite spec
+    import:           shared
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
+    main-is:          Spec.hs
+    build-depends:
+        base,
+        vector,
+        QuickCheck,
+        haskell-mnist
