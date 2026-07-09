@@ -21,3 +21,7 @@ cabal.project.local
 cabal.project.local~
 .HTF/
 .ghc.environment.*
+
+# MNIST dataset (downloaded separately, not versioned — see README)
+data/*-ubyte
+data/*-ubyte.gz

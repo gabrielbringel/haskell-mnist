@@ -26,8 +26,6 @@ common shared
 library
     import:           shared
     hs-source-dirs:   src
-    -- Only the foundation modules are wired up so far; Layer, Network, Train,
-    -- etc. are still empty stubs and will be added as they are implemented.
     exposed-modules:
         Vec
         Mat
@@ -35,9 +33,24 @@ library
         Loss
         Layer
         Network
+        Train
+        Init
+        MNIST
     build-depends:
-        base   >=4.17 && <5,
+        base       >=4.17 && <5,
+        bytestring,
+        random,
         vector
+
+executable haskell-mnist-train
+    import:           shared
+    hs-source-dirs:   app
+    main-is:          Main.hs
+    ghc-options:      -O2
+    build-depends:
+        base,
+        random,
+        haskell-mnist
 
 test-suite spec
     import:           shared

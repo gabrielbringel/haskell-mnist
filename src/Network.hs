@@ -13,8 +13,12 @@ module Network
   ( Network(..)
   , networkForward
   , networkBackward
+  , predict
+  , accuracy
   ) where
 
+import           Data.List    (maximumBy)
+import           Data.Ord     (comparing)
 import           GHC.TypeNats (KnownNat, Nat)
 
 import           Activation   (relu, relu')
@@ -74,3 +78,34 @@ networkBackward net x z1 a1 dZ2 = (dW1, dB1, dW2, dB2, dX)
     dZ1 = Vec.vzipWith (\da z -> da * relu' z) dA1 z1
     -- Hidden layer backward
     (dW1, dB1, dX)  = Layer.backward (hidden net) x dZ1
+
+-- | Predicted class for an input: the index of the largest output logit.
+-- Softmax is order-preserving, so argmax of the logits equals argmax of the
+-- probabilities — no need to normalise first.
+predict
+  :: (KnownNat i, KnownNat h, KnownNat o)
+  => Network i h o
+  -> Vec i Double
+  -> Int
+predict net x = argmax z2
+  where
+    (_, _, z2) = networkForward net x
+
+-- | Classification accuracy over a labelled dataset, with labels given as
+-- class indices (@0..o-1@). Returns the fraction correct in @[0, 1]@ (and @0@
+-- for an empty dataset).
+accuracy
+  :: (KnownNat i, KnownNat h, KnownNat o)
+  => Network i h o
+  -> [(Vec i Double, Int)]
+  -> Double
+accuracy net dataset
+  | null dataset = 0
+  | otherwise    =
+      fromIntegral (length (filter correct dataset)) / fromIntegral (length dataset)
+  where
+    correct (x, label) = predict net x == label
+
+-- | Index of the maximum element of a vector (ties broken towards the last).
+argmax :: Vec n Double -> Int
+argmax v = snd (maximumBy (comparing fst) (zip (Vec.toList v) [0 ..]))
