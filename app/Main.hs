@@ -26,13 +26,13 @@ learningRate :: Double
 learningRate = 0.05
 
 epochs :: Int
-epochs = 5
+epochs = 25
 
 trainSize :: Int
-trainSize = 10000     -- examples per epoch (subset of the full 60k set)
+trainSize = 60000     -- examples per epoch (subset of the full 60k set)
 
 testSize :: Int
-testSize = 2000       -- examples used to estimate accuracy
+testSize = 10000       -- examples used to estimate accuracy
 
 seed :: Int
 seed = 42
