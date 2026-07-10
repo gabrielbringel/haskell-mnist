@@ -1,0 +1,640 @@
+%% main.tex — haskell-mnist paper
+%% Compile-time dimension safety for a from-scratch MNIST classifier in Haskell.
+%%
+%% Build: latexmk -pdf main.tex   (or pdflatex + bibtex + pdflatex ×2)
+%% Requires the ACM template class (acmart), available on CTAN / Overleaf.
+%%
+%% [nonacm] removes the ACM rights block / conference footer — appropriate for a
+%% course paper. Remove it if a proper ACM submission format is required.
+\documentclass[sigconf,nonacm]{acmart}
+
+%% ---- Packages ---------------------------------------------------------------
+%% acmart already loads: graphicx, booktabs, hyperref, amsmath (via amsart core).
+\usepackage{listings}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning}
+\usepackage[capitalise]{cleveref}   % must load after hyperref (acmart loads it)
+\crefname{listing}{Listing}{Listings}
+\Crefname{listing}{Listing}{Listings}
+
+%% ---- Listings style ----------------------------------------------------------
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  keepspaces=true
+}
+
+%% ---- Metadata -----------------------------------------------------------------
+\title{Compile-Time Dimension Safety for Neural Networks:\\
+  A Type-Indexed MNIST Classifier in Haskell}
+
+\author{Gabriel Bringel Gonçalves}
+\affiliation{%
+  \institution{Universidade Federal da Paraíba}% TODO: your university / course
+  \city{João Pessoa, PB}
+  \country{Brazil}}
+\email{gbg@academico.ufpb.br}% TODO: your email
+
+\begin{document}
+
+%% =============================================================================
+%% Abstract
+%% =============================================================================
+\begin{abstract}
+Neural networks are built from tensor operations whose correctness depends on
+matching dimensions, yet in mainstream frameworks a shape is an ordinary runtime
+value, so a mismatched product or an incompatibly composed layer fails only at
+execution---late, displaced from its cause, and only on code paths that are run.
+Our insight is that these dimensions can be lifted into the type system, where
+the compiler checks them. We implement this in Haskell by indexing every vector
+and matrix with its size as a type-level natural: a length-$n$ vector has type
+$\mathtt{Vec}\ n$ and an $r\times c$ matrix has type $\mathtt{Mat}\ r\ c$, and
+each operation is typed so that only dimension-consistent uses are well-formed.
+A mismatch therefore becomes a compile-time error rather than a runtime crash,
+and the same discipline extends to a hand-written, typed reverse-mode
+backpropagation---with no automatic-differentiation library---in which each
+gradient carries the type of the tensor it differentiates, so the backward pass
+is shape-checked exactly as the forward pass is. We verify the hand-derived
+gradients against finite differences with a property-based test suite, and, as an
+end-to-end confirmation, train the typed network on MNIST to ${\sim}90\%$ test
+accuracy without automatic differentiation or BLAS. The result shows that a
+mainstream functional language, without a specialized dependent type theory, is
+already expressive enough to make an entire category of numerical bug
+unrepresentable.
+\end{abstract}
+
+\maketitle
+
+%% =============================================================================
+%% 1. Introduction
+%% =============================================================================
+\section{Introduction}
+\label{sec:introduction}
+
+Neural networks are built from tensor operations---matrix--vector products,
+transpositions, elementwise maps---whose correctness depends on the operands'
+dimensions lining up exactly. In mainstream frameworks such as NumPy and PyTorch,
+those dimensions are ordinary runtime values, and a shape mismatch is caught only
+when the offending operation executes~\cite{numpy,pytorch}. The resulting error
+is both late and displaced: it surfaces as an exception deep inside a
+computation, often far from the line that introduced the wrong shape, and only if
+that code path is run at all.
+
+This runtime character is the root of the problem. Because a tensor's shape is
+not part of its type, the compiler cannot see that a $10\times5$ matrix is being
+multiplied by a length-$3$ vector; nothing rules out the mismatch until execution
+reaches it. For a network, whose every weight, activation, and gradient has a
+dimension fixed by the layer sizes, this places an entire class of bug---a
+transposed matrix, a layer wired to the wrong-sized input, two layers composed at
+a mismatched boundary---outside the reach of static checking. The question this
+raises is whether those dimensions can instead be made part of the type, so that
+the mismatch never compiles.
+
+In this paper we answer that question by building a complete MNIST classifier in
+Haskell whose tensors carry their dimensions in their types. Using type-level
+natural numbers (\textsc{DataKinds}), a length-$n$ vector has type
+$\mathtt{Vec}\ n$ and an $r\times c$ matrix has type $\mathtt{Mat}\ r\ c$, and
+every operation is typed so that only dimension-consistent uses are well-formed:
+the matrix--vector product $\mathtt{Mat}\ r\ c \to \mathtt{Vec}\ c \to
+\mathtt{Vec}\ r$ ties the vector's length to the matrix's column count.
+\Cref{fig:pipeline} shows a single input flowing through the network with its
+type changing at each layer. A dimension mismatch is then a type error, reported
+at the call site before the program runs (\Cref{lst:dimerror}), rather than a
+runtime crash.
+
+%% ---- Figure 1: type-flow pipeline (teaser) ----------------------------------
+\begin{figure*}[t]
+  \centering
+  \begin{tikzpicture}[
+    >=Stealth,
+    font=\small,
+    node distance=0.95cm,
+    tensor/.style={rounded corners=3pt, draw, fill=gray!8, align=center,
+                   inner sep=5pt, minimum height=1cm},
+    op/.style={draw, fill=gray!18, align=center, inner sep=5pt,
+               minimum height=1cm},
+    typelabel/.style={font=\footnotesize\ttfamily, midway, above=1pt},
+    paramlabel/.style={font=\scriptsize, align=center, below=3pt}
+  ]
+    \node[tensor] (x)                      {$\mathbf{x}$\\\texttt{Vec 784}};
+    \node[op, right=of x]    (l1)          {Linear$_1$\\$W_1\mathbf{x}+b_1$};
+    \node[op, right=of l1]   (relu)        {ReLU};
+    \node[op, right=of relu] (l2)          {Linear$_2$\\$W_2\mathbf{a}_1+b_2$};
+    \node[op, right=of l2]   (soft)        {softmax};
+    \node[tensor, right=of soft] (y)       {$\hat{\mathbf{y}}$\\\texttt{Vec 10}};
+
+    \draw[->] (x)    -- (l1)   node[typelabel]{Vec 784};
+    \draw[->] (l1)   -- (relu) node[typelabel]{Vec 64};
+    \draw[->] (relu) -- (l2)   node[typelabel]{Vec 64};
+    \draw[->] (l2)   -- (soft) node[typelabel]{Vec 10};
+    \draw[->] (soft) -- (y)    node[typelabel]{Vec 10};
+
+    \node[paramlabel] at (l1.south) {$W_1:\;$\texttt{Mat 64 784}\\$b_1:\;$\texttt{Vec 64}};
+    \node[paramlabel] at (l2.south) {$W_2:\;$\texttt{Mat 10 64}\\$b_2:\;$\texttt{Vec 10}};
+  \end{tikzpicture}
+  \caption{Type flow through the network. A single input
+    $\mathbf{x} : \texttt{Vec 784}$ is threaded through two linear layers and
+    their activations to a distribution $\hat{\mathbf{y}} : \texttt{Vec 10}$; the
+    monospaced annotation on each edge is the shape of the value passing along
+    it, and the parameter types beneath each layer fix its dimensions. Because
+    $\mathtt{mulV} : \mathtt{Mat}\ r\ c \to \mathtt{Vec}\ c \to \mathtt{Vec}\ r$
+    ties a layer's input length to its weight matrix's column count, only a
+    network whose successive dimensions agree---$784, 64, 64, 10, 10$---is
+    well-typed.}
+  \label{fig:pipeline}
+\end{figure*}
+
+The same discipline covers the part of a network most prone to hand-coding
+mistakes: the gradients. We write backpropagation by hand, with no
+automatic-differentiation library, as a typed reverse pass in which the gradient
+of a tensor has the type of that tensor---the gradient of a $\mathtt{Mat}\ r\ c$
+is again a $\mathtt{Mat}\ r\ c$. The backward pass is therefore checked by the
+type system exactly as the forward pass is, and the shape identities of
+backpropagation become visible in the types rather than hidden inside a
+differentiation engine (\Cref{sec:backprop}).
+
+We validate the implementation on two fronts. The type-level guarantee is shown
+by the compiler rejecting a deliberate mismatch (\Cref{lst:dimerror}), and the
+numerical content is verified by a property-based test suite in which the
+hand-derived gradients are checked against finite differences. As an end-to-end
+confirmation that the typed forward and backward passes are correct, the network
+trains on MNIST to ${\sim}90\%$ test accuracy with no automatic differentiation
+and no BLAS (\Cref{sec:results}).
+
+\paragraph{Contributions.}
+In summary, this paper contributes:
+\begin{itemize}
+  \item a feedforward MNIST classifier in Haskell whose tensor dimensions are
+    type-level naturals, turning every dimension mismatch---within an operation
+    or across composed layers---into a compile-time error;
+  \item a hand-written, typed reverse-mode backpropagation in which each gradient
+    carries the type of the tensor it differentiates, so the backward pass is
+    shape-checked like the forward pass, with no automatic-differentiation
+    library; and
+  \item a property-based verification of the hand-derived gradients against
+    finite differences, together with an end-to-end functional result
+    (${\sim}90\%$ on MNIST) confirming the typed implementation trains correctly.
+\end{itemize}
+
+%% =============================================================================
+%% 2. Background
+%% =============================================================================
+\section{Background}
+\label{sec:background}
+
+\subsection{MNIST and feedforward classification}
+\label{sec:bg:mnist}
+
+MNIST is a standard benchmark of $28\times28$ grayscale images of handwritten
+digits, each labeled with one of ten classes~\cite{lecun-mnist}. A feedforward
+classifier maps a flattened image $\mathbf{x}\in\mathbb{R}^{784}$ through a
+sequence of affine transformations $\mathbf{z} = W\mathbf{x} + \mathbf{b}$
+interleaved with nonlinearities, ending in a probability distribution over the
+ten classes. The parameters are fit by minimizing a loss with gradient descent,
+and the gradients are obtained by reverse-mode differentiation
+(backpropagation): the loss gradient is propagated from the output back through
+each layer, reusing intermediate values from the forward pass. The dimensions of
+every weight, activation, and gradient are fixed by the network's layer sizes,
+and a single transposed matrix or mismatched layer boundary is enough to make the
+computation ill-formed---the class of error this work eliminates.
+
+\subsection{Type-level naturals in Haskell}
+\label{sec:bg:datakinds}
+
+Our implementation encodes those dimensions in the types, using three GHC
+features. \textsc{DataKinds} promotes ordinary natural-number literals to the
+type level, so that a size such as $784$ or $10$ can appear as a type
+index~\cite{datakinds}. A type parameter of kind $\mathtt{Nat}$ then lets a data
+type carry a dimension without storing it: in $\mathtt{Vec}\ (n :: \mathtt{Nat})\
+a$, the index $n$ is a phantom that constrains the type but not the runtime
+representation. When the size is genuinely needed as a runtime integer---to
+allocate a vector, for instance---the $\mathtt{KnownNat}$ class and its
+$\mathtt{natVal}$ reflect the type-level $\mathtt{Nat}$ back down to an
+$\mathtt{Int}$. Together these turn a dimension into a compile-time quantity that
+the type checker can reason about, which is what makes a mismatch a type error
+rather than a runtime fault (\Cref{sec:architecture}).
+
+\subsection{Related work}
+\label{sec:bg:related}
+
+\paragraph{Shape safety in numerical computing.}
+Mainstream tensor frameworks such as NumPy and PyTorch represent shapes as
+ordinary runtime values and check them dynamically: an incompatible product
+raises an exception when the offending operation executes, often far from the
+line that introduced the wrong shape, and only if that code path is
+run~\cite{numpy,pytorch}. A complementary line of work moves shapes into the type
+system so that mismatches are rejected statically. Dependently-typed languages
+express length-indexed vectors directly---for example Idris's $\mathtt{Vect}\ n\
+a$~\cite{idris}---and in Haskell the same effect is obtained with type-level
+naturals: the statically-sized interface of \texttt{hmatrix} and the
+\texttt{grenade} deep-learning library both index their tensors by
+dimension~\cite{hmatrix,grenade}. Our work sits in this second line but with a
+pedagogical aim: rather than providing a library, we build a complete
+classifier---forward and backward---on a minimal typed core, to show end to end
+how the guarantee is obtained.
+
+\paragraph{Automatic differentiation.}
+Gradients are usually computed automatically. Reverse-mode automatic
+differentiation underlies every mainstream framework, and functional accounts
+formulate it compositionally, most cleanly as a structure-preserving
+transformation of programs~\cite{elliott2018}. We deliberately do not use an
+automatic-differentiation library: the backward pass of \Cref{sec:backprop} is
+written by hand as a typed reverse pass, both to keep the implementation
+self-contained and to make the shape discipline of backpropagation---each
+gradient carrying the type of the tensor it differentiates---explicit rather than
+hidden inside a differentiation engine.
+
+%% =============================================================================
+%% 3. Architecture and Design
+%% =============================================================================
+\section{Architecture and Design}
+\label{sec:architecture}
+
+We classify MNIST digits with a two-layer feedforward network,
+\(784 \to 64 \to 10\), with a ReLU hidden layer and a softmax output. The
+design principle that organizes the whole implementation is that every vector
+and matrix carries its dimension in its type: a length-\(n\) vector has type
+\(\mathtt{Vec}\ n\) and an \(r \times c\) matrix has type \(\mathtt{Mat}\ r\ c\),
+where \(n\), \(r\), and \(c\) are type-level naturals (\(\mathtt{Nat}\)s, via
+\textsc{DataKinds}). Because the shapes live in the types, the compiler rejects
+any operation whose dimensions do not line up, turning what is normally a
+runtime crash into a compile-time error. \Cref{fig:pipeline} shows how a single
+input flows through the network with its type changing at each stage. The rest
+of this section describes the representation of shaped vectors and matrices
+(\Cref{sec:arch:tensors}), the linear layer built on top of them
+(\Cref{sec:arch:layer}), and how layers compose into a network whose interfaces
+are checked by the type system (\Cref{sec:arch:network}).
+
+\subsection{Shaped vectors and matrices}
+\label{sec:arch:tensors}
+
+We represent a shaped vector as a \texttt{newtype} over a boxed
+\texttt{Data.Vector}, \(\mathtt{Vec}\ (n :: \mathtt{Nat})\ a\), and a matrix as a
+\texttt{newtype} \(\mathtt{Mat}\ (r :: \mathtt{Nat})\ (c :: \mathtt{Nat})\ a\)
+stored row-major, with element \((i, j)\) at flat index \(i\,c + j\). The
+type-level index is a phantom: it constrains the type without appearing in the
+runtime representation, so a shaped tensor is exactly as compact as the
+underlying vector. The operation that makes these types earn their keep is the
+matrix--vector product,
+\[
+  \mathtt{mulV} :: (\mathtt{KnownNat}\ r,\ \mathtt{KnownNat}\ c)
+  \Rightarrow \mathtt{Mat}\ r\ c\ a \to \mathtt{Vec}\ c\ a \to \mathtt{Vec}\ r\ a.
+\]
+The column count of the matrix and the length of the vector are the same type
+variable \(c\), and the result has length \(r\). There is therefore no
+well-typed way to multiply a matrix by a vector of the wrong length, nor to give
+the result the wrong length.
+
+A shape mismatch is the dominant failure mode when a network is written without
+a tensor framework's runtime checks, and it is silent: a wrong dimension usually
+surfaces far from its cause, as a crash deep inside a later multiplication.
+Encoding the dimension in the type moves the check to the definition site.
+\Cref{lst:dimerror} shows the compiler rejecting a deliberately mismatched
+product; the error names the two dimensions that fail to unify, at the exact
+call site, before the program is ever run. The sizes remain available at runtime
+when genuinely needed: a \texttt{KnownNat} constraint together with
+\texttt{natVal} recovers \(n\) as an \texttt{Int} for allocation in
+\texttt{generate} and \texttt{replicate}, so nothing is lost by keeping
+dimensions in the types.
+
+%% ---- Listing 1: compile-time rejection of a dimension mismatch --------------
+\begin{lstlisting}[float=t, caption={GHC rejects a dimension mismatch at compile time. \texttt{weirdMat} has type \texttt{Mat 10 5 Double}, so \texttt{Mat.mulV} requires a \texttt{Vec 5 Double}; passing a \texttt{Vec 3 Double} is a type error, never reaching runtime.}, label={lst:dimerror}]
+scratch/DimensionError.hs:25:33: error:
+    - Couldn't match type '3' with '5'
+      Expected: Vec 5 Double
+        Actual: Vec 3 Double
+    - In the second argument of 'Mat.mulV',
+      namely 'badVec'
+      In the first argument of 'print', namely
+        '(Mat.mulV weirdMat badVec)'
+      In the expression:
+        print (Mat.mulV weirdMat badVec)
+   |
+25 | main = print (Mat.mulV weirdMat badVec)
+   |
+\end{lstlisting}
+
+\subsection{Linear layers}
+\label{sec:arch:layer}
+
+A linear layer has type \(\mathtt{Layer}\ c\ r\), mapping \(c\) inputs to \(r\)
+outputs; it pairs a weight matrix of type \(\mathtt{Mat}\ r\ c\) with a bias of
+type \(\mathtt{Vec}\ r\). Its forward pass computes the pre-activation
+\(\mathbf{z} = W\mathbf{x} + \mathbf{b}\), typed as
+\(\mathtt{forward} :: \mathtt{Layer}\ c\ r \to \mathtt{Vec}\ c\ \mathtt{Double}
+\to \mathtt{Vec}\ r\ \mathtt{Double}\). The weight matrix's column count is tied
+to the input length and its row count to the output length by construction, so a
+layer cannot be applied to an input of the wrong size, and its weights cannot be
+allocated with a shape inconsistent with the layer's declared interface. The
+same \(\mathtt{Mat}\)/\(\mathtt{Vec}\) discipline that guards the forward pass
+also constrains the backward pass, whose typed derivation is the subject of
+\Cref{sec:backprop}.
+
+\subsection{Network composition}
+\label{sec:arch:network}
+
+A network has type \(\mathtt{Network}\ i\ h\ o\) and is a pair of layers: a
+hidden layer \(\mathtt{Layer}\ i\ h\) and an output layer \(\mathtt{Layer}\ h\
+o\). The shared type variable \(h\) is the crux of the design. The hidden
+layer's output length and the output layer's input length are forced to be the
+same \(h\), so two layers compose into a network only when their interfaces
+agree; a size disagreement is a type error, not a latent bug. The forward pass
+threads an input through both layers,
+\[
+  \mathbf{x} \;\mapsto\; \mathbf{a}_1 = \mathrm{ReLU}(W_1\mathbf{x} + \mathbf{b}_1)
+  \;\mapsto\; \mathbf{z}_2 = W_2\mathbf{a}_1 + \mathbf{b}_2,
+\]
+and returns the raw logits \(\mathbf{z}_2 : \mathtt{Vec}\ o\); the softmax is
+applied separately when computing the loss (\Cref{sec:backprop}). For the MNIST
+classifier we instantiate \(i = 784\), \(h = 64\), and \(o = 10\); these three
+numbers are the only shape information the rest of the program needs, as every
+intermediate size is inferred from them.
+
+\paragraph{Design choices.}
+Tensors are boxed \texttt{Data.Vector}s, which retain the standard
+\texttt{Functor}/\texttt{Foldable}/\texttt{Traversable} instances at the cost of
+unboxed performance; the emphasis of this work is correctness, not throughput.
+We index elements with a plain \texttt{Int} rather than a bounded
+\(\mathtt{Finite}\ n\) type, trading compile-time bounds checking for a lighter
+dependency footprint, so the type-level guarantee covers tensor dimensions but
+not index ranges. The library is compiled with \texttt{-Wall} under GHC~9.4.8.
+
+%% =============================================================================
+%% 4. Functional Backpropagation
+%% =============================================================================
+\section{Functional Backpropagation}
+\label{sec:backprop}
+
+Training the network requires the gradient of the loss with respect to every
+weight and bias. We compute it by reverse-mode differentiation, written by
+hand---there is no automatic-differentiation library. The organizing idea
+mirrors the forward pass of \Cref{sec:architecture}: the gradient of a shaped
+tensor has the same shape, and therefore the same type, as the tensor itself.
+The gradient of a weight matrix \(W : \mathtt{Mat}\ r\ c\) is again a
+\(\mathtt{Mat}\ r\ c\); the gradient of a bias \(\mathbf{b} : \mathtt{Vec}\ r\)
+is a \(\mathtt{Vec}\ r\). Consequently the backward pass is guarded by the same
+type discipline as the forward pass: a reverse pass whose tensors are wired
+together incorrectly does not compile. We first give the backward pass of a
+single linear layer (\Cref{sec:bp:layer}), then the loss gradient and the ReLU
+gate that link the two layers (\Cref{sec:bp:loss}), and finally the reverse pass
+through the whole network (\Cref{sec:bp:network}); \Cref{sec:results} reports the
+finite-difference checks that verify the derivation.
+
+\subsection{Backward pass of a linear layer}
+\label{sec:bp:layer}
+
+For a linear layer \(\mathbf{z} = W\mathbf{x} + \mathbf{b}\), let
+\(\mathrm{d}\mathbf{z} = \partial L / \partial \mathbf{z}\) be the upstream
+gradient arriving from the next layer. The three gradients the layer must
+produce are standard, and each maps onto exactly one shaped primitive:
+\begin{align}
+  \mathrm{d}W        &= \mathrm{d}\mathbf{z}\,\mathbf{x}^{\top}
+    && = \mathtt{outer}\ \mathrm{d}\mathbf{z}\ \mathbf{x}
+    && : \mathtt{Mat}\ r\ c, \\
+  \mathrm{d}\mathbf{b} &= \mathrm{d}\mathbf{z}
+    && &&: \mathtt{Vec}\ r, \\
+  \mathrm{d}\mathbf{x} &= W^{\top}\mathrm{d}\mathbf{z}
+    && = \mathtt{mulV}\ (\mathtt{transpose}\ W)\ \mathrm{d}\mathbf{z}
+    && : \mathtt{Vec}\ c.
+\end{align}
+The weight gradient is an outer product, which has the shape of \(W\) by the
+type of \(\mathtt{outer} : \mathtt{Vec}\ r \to \mathtt{Vec}\ c \to
+\mathtt{Mat}\ r\ c\). The input gradient \(\mathrm{d}\mathbf{x}\) is what the
+layer passes further back, and its type \(\mathtt{Vec}\ c\) matches the layer's
+input exactly. The bias gradient is just the upstream gradient. Because
+\(\mathtt{outer}\), \(\mathtt{transpose}\), and \(\mathtt{mulV}\) are the same
+shaped operations used in the forward pass (\Cref{sec:arch:tensors}), the
+backward pass reuses the forward pass's guarantees for free: one cannot
+transpose the wrong way or contract the wrong axis and still type-check.
+
+\subsection{Loss gradient and activation gate}
+\label{sec:bp:loss}
+
+Two ingredients connect the output layer's gradient to the hidden layer's. The
+first is the loss gradient. Differentiating a softmax followed by cross-entropy
+would naively require forming the \(o \times o\) softmax Jacobian and
+multiplying it by the cross-entropy gradient. For a softmax output
+\(\hat{\mathbf{y}}\) against a one-hot target \(\mathbf{y}\), however, the two
+derivatives telescope and the gradient with respect to the output logits
+collapses to
+\[
+  \frac{\partial L}{\partial \mathbf{z}_2} = \hat{\mathbf{y}} - \mathbf{y},
+\]
+a single vector subtraction of type \(\mathtt{Vec}\ o\). We compute this directly
+and never build the Jacobian.
+
+The second ingredient is the ReLU gate. The chain rule multiplies the gradient
+flowing into the hidden pre-activation by \(\mathrm{ReLU}'(\mathbf{z}_1)\)
+elementwise, where \(\mathrm{ReLU}'\) is \(1\) on active units and \(0\)
+otherwise:
+\[
+  \mathrm{d}\mathbf{z}_1 = \mathrm{d}\mathbf{a}_1 \odot \mathrm{ReLU}'(\mathbf{z}_1).
+\]
+Gradient therefore flows only through units that were active in the forward
+pass; the rest are zeroed.
+
+\subsection{Reverse pass through the network}
+\label{sec:bp:network}
+
+The full reverse pass composes these pieces in the order opposite to the forward
+pass. Given the input \(\mathbf{x}\), the stored hidden pre-activation
+\(\mathbf{z}_1\) and activation \(\mathbf{a}_1\), and the loss gradient
+\(\mathrm{d}\mathbf{z}_2 = \hat{\mathbf{y}} - \mathbf{y}\), we run the output
+layer backward to obtain \(\mathrm{d}W_2\), \(\mathrm{d}\mathbf{b}_2\), and the
+gradient \(\mathrm{d}\mathbf{a}_1\) with respect to the hidden activation; we
+gate it through the ReLU derivative to get \(\mathrm{d}\mathbf{z}_1\); and we run
+the hidden layer backward to obtain \(\mathrm{d}W_1\), \(\mathrm{d}\mathbf{b}_1\),
+and the input gradient. The output is the gradient for all four parameter
+tensors, each typed identically to the parameter it updates. Because the
+intermediate gradients \(\mathrm{d}\mathbf{a}_1\) and \(\mathrm{d}\mathbf{z}_1\)
+are both \(\mathtt{Vec}\ h\), and the two layers' backward passes demand exactly
+that length, the hand-off between layers is checked at compile time just as the
+forward composition is.
+
+\paragraph{Correctness.}
+Writing backpropagation by hand invites sign errors and transposed-axis mistakes
+that the type checker cannot catch, since a wrong-but-well-shaped gradient still
+type-checks. We therefore verify the derivation numerically: for each weight we
+compare the analytical gradient against a central finite difference,
+\(\bigl(L(\theta + \varepsilon) - L(\theta - \varepsilon)\bigr) / 2\varepsilon\),
+both for a single layer and for the composed network. These checks are expressed
+as QuickCheck properties and hold over randomized inputs (\Cref{sec:results}), so
+the hand-written reverse pass is verified against the definition of the
+derivative rather than merely assumed correct.
+
+%% =============================================================================
+%% 5. Results
+%% =============================================================================
+\section{Results}
+\label{sec:results}
+
+Because the contribution of this work is correctness by construction rather than
+competitive accuracy, we organize the evaluation around three questions: does the
+implementation guarantee what it claims (\Cref{sec:res:correct}); does the typed
+network actually train (\Cref{sec:res:training}); and where does it fail
+(\Cref{sec:res:errors}). We close with the limitations of the evaluation scope
+(\Cref{sec:res:limits}). \Cref{tab:setup} lists the configuration shared by all
+runs.
+
+\begin{table}[t]
+  \centering
+  \caption{Experimental configuration. All runs share these settings; only the
+    learning rate is varied (\Cref{sec:res:training}).}
+  \label{tab:setup}
+  \begin{tabular}{ll}
+    \toprule
+    Setting & Value \\
+    \midrule
+    Architecture       & $784 \to 64 \to 10$ (ReLU, softmax) \\
+    Weight init        & He-uniform $U(-\sqrt{6/\mathrm{fanIn}}, \sqrt{6/\mathrm{fanIn}})$ \\
+    Bias init          & $0$ \\
+    Loss               & cross-entropy \\
+    Optimizer          & online (per-example) SGD \\
+    Examples / epoch   & $10\,000$ (subset of $60\,000$) \\
+    Test examples      & $2\,000$ (subset of $10\,000$) \\
+    Epochs             & $5$ \\
+    RNG seed           & $42$ \\
+    Runtime            & ${\sim}7.5$ min / run (GHC 9.4.8, \texttt{-O2}) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Correctness}
+\label{sec:res:correct}
+
+The central claim---that a dimension mismatch is a compile-time error rather than
+a runtime crash---is demonstrated directly in \Cref{lst:dimerror}: multiplying a
+\texttt{Mat 10 5} by a \texttt{Vec 3} is rejected by the compiler, which reports
+the two dimensions that fail to unify at the exact call site, before the program
+runs.
+
+The type system guarantees that shapes line up, but it cannot catch a
+sign error or a transposed axis in a hand-written gradient, since such a mistake
+is still well-shaped. We therefore verify the numerical content of the
+implementation with a property-based test suite: $14$ QuickCheck properties, each
+run on $100$ randomized inputs, all passing. The properties cover the shaped
+linear algebra (transpose involution, matrix--vector product against a naive
+reference, outer-product elements), the activations and loss, and---most
+importantly---the backward passes. The weight-gradient properties for both a
+single layer and the composed network compare each analytical gradient against a
+central finite difference,
+\(\bigl(L(\theta+\varepsilon) - L(\theta-\varepsilon)\bigr)/2\varepsilon\), so the
+hand-derived backpropagation of \Cref{sec:backprop} is checked against the
+definition of the derivative rather than assumed.
+
+\subsection{Training and accuracy}
+\label{sec:res:training}
+
+\begin{figure*}[t]
+  \centering
+  \includegraphics[width=\textwidth]{../fig-training.pdf}
+  \caption{Mean training loss (a) and test accuracy (b) per epoch for the two
+    learning rates. The larger rate ($0.10$) oscillates and stalls; the smaller
+    rate ($0.05$) descends smoothly and reaches ${\sim}90\%$. Epoch $0$ in (b) is
+    the accuracy at initialization ($9.90\%$), shared by both runs.}
+  \label{fig:training}
+\end{figure*}
+
+To confirm that the typed network trains as an ordinary classifier, we run it on
+MNIST with the default learning rate of $0.05$. Test accuracy rises from
+$9.90\%$ at initialization---near the $1/10$ chance rate, confirming a
+near-uniform softmax output before training---to a peak of $91.35\%$ at epoch $4$,
+finishing at $89.75\%$ after five epochs, while the mean per-example
+cross-entropy falls monotonically from $0.53$ to $0.23$ (\Cref{fig:training}).
+For a from-scratch network with no mini-batching and no BLAS, reaching
+${\sim}90\%$ is a functional sanity check that the typed forward and backward
+passes are correct end to end, not a competitive claim.
+
+The learning rate is the one hyperparameter that decides whether the network
+converges, which we show by comparing $0.05$ against $0.10$ under an otherwise
+identical protocol. At $0.10$ the loss stalls around $0.94$ and accuracy
+oscillates between $70\%$ and $78\%$ across epochs: for batch-size-one SGD, the
+larger step overshoots and the parameters bounce around a minimum instead of
+settling into it. Halving the rate to $0.05$ removes the oscillation and yields
+the smooth descent above. This is the paper's single ablation, and it isolates
+the step size as the decisive factor.
+
+\subsection{Error analysis}
+\label{sec:res:errors}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{../fig-confusion.pdf}
+  \caption{Confusion matrix on the test subset for the final $\text{lr}=0.05$
+    network (epoch $5$, ${\sim}89.75\%$). Color encodes the row-normalized
+    frequency; annotations are raw counts.}
+  \label{fig:confusion}
+\end{figure}
+
+\Cref{fig:confusion} shows the confusion matrix of the final $\text{lr}=0.05$
+network on the test subset. Most of the mass lies on the diagonal, consistent
+with the ${\sim}90\%$ accuracy. The off-diagonal errors are not spread uniformly;
+\Cref{fig:confusion} lets us read off which digit pairs dominate the residual
+error for this run.
+% TODO: after generating results/confusion-matrix.csv, name the top 2-3 confused
+% pairs and add one sentence interpreting them (MNIST commonly confuses visually
+% similar pairs such as 4/9, 3/5, 7/9). Replace this comment with the real ones.
+
+\subsection{Scope and limitations}
+\label{sec:res:limits}
+
+The evaluation is deliberately modest, matching the project's emphasis on
+type-level correctness over throughput. We train on a $10\,000$-image subset and
+evaluate on a $2\,000$-image subset rather than the full sets, to keep wall time
+reasonable under a boxed-\texttt{Vector} implementation with no BLAS. We report a
+single run per configuration at a fixed seed, so the curves in
+\Cref{fig:training} carry no error bars; the learning-rate comparison should be
+read as indicative rather than as a statistically controlled study. Finally,
+training uses online SGD with one gradient step per image, not mini-batches, so
+the loss curves are noisier than a batched optimizer would produce. None of these
+choices bear on the correctness claims of \Cref{sec:res:correct}, which are
+independent of the training subset or seed.
+
+%% =============================================================================
+%% 6. Conclusion
+%% =============================================================================
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper addresses a class of error that ordinarily surfaces only at
+runtime---the dimension mismatch between a network's weights, activations, and
+gradients---by encoding every tensor's shape in its type. Using type-level
+naturals in Haskell, a length-$n$ vector and an $r\times c$ matrix carry their
+dimensions as $\mathtt{Nat}$ indices, so an incompatible product, a layer applied
+to the wrong-sized input, or two layers composed at a mismatched boundary is
+rejected by the compiler rather than crashing at execution. The same discipline
+extends to the reverse pass: because the gradient of a tensor has the type of
+that tensor, hand-written backpropagation is guarded by the type checker just as
+the forward pass is.
+
+The evidence is twofold. The type-level guarantee is demonstrated by the compiler
+rejecting a deliberate mismatch before the program runs, and the numerical
+content of the implementation is verified by a property-based test suite in which
+the hand-derived gradients are checked against finite differences over randomized
+inputs (\Cref{sec:res:correct}). As a functional confirmation that the typed
+forward and backward passes are correct end to end, the network trains on MNIST
+to ${\sim}90\%$ test accuracy with no automatic-differentiation library and no
+BLAS (\Cref{fig:training}). The broader takeaway is that a mainstream functional
+language, without a specialized dependent type theory, is already expressive
+enough to make an entire category of numerical bug unrepresentable, and to do so
+without hiding the mathematics inside a framework.
+
+The scope of the work is deliberately narrow. The architecture is a single
+two-layer classifier trained with online SGD on subsets of MNIST, and the
+emphasis on type-level correctness comes at the cost of throughput: boxed vectors
+with no BLAS make a full run take minutes rather than seconds. These are
+boundaries of the demonstration, not of the technique. The natural next step is
+to generalize the typed core from a fixed two-layer network to an arbitrary stack
+of layers---representing a network as a type-level list of dimensions and folding
+the forward and backward passes over it---so that networks of any depth inherit
+the same compile-time shape guarantee. Extending the shaped primitives to
+mini-batches and to an unboxed representation would then close the gap between
+the correctness demonstrated here and practical performance.
+
+%% =============================================================================
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{references}
+
+\end{document}
