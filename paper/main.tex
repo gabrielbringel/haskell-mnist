@@ -301,7 +301,7 @@ dimensions in the types.
 
 %% ---- Listing 1: compile-time rejection of a dimension mismatch --------------
 \begin{lstlisting}[float=t, caption={GHC rejects a dimension mismatch at compile time. \texttt{weirdMat} has type \texttt{Mat 10 5 Double}, so \texttt{Mat.mulV} requires a \texttt{Vec 5 Double}; passing a \texttt{Vec 3 Double} is a type error, never reaching runtime.}, label={lst:dimerror}]
-scratch/DimensionError.hs:25:33: error:
+scratch/DimensionError.hs:24:33: error:
     - Couldn't match type '3' with '5'
       Expected: Vec 5 Double
         Actual: Vec 3 Double
@@ -312,7 +312,7 @@ scratch/DimensionError.hs:25:33: error:
       In the expression:
         print (Mat.mulV weirdMat badVec)
    |
-25 | main = print (Mat.mulV weirdMat badVec)
+24 | main = print (Mat.mulV weirdMat badVec)
    |
 \end{lstlisting}
 
