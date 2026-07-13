@@ -36,3 +36,12 @@ paper/main.pdf
 # MNIST dataset (downloaded separately, not versioned — see README)
 data/*-ubyte
 data/*-ubyte.gz
+
+# Python (plotting scripts — see requirements.txt)
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
