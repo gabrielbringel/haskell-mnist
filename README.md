@@ -92,24 +92,25 @@ to reproduce or extend the runs.
 
 ## Results
 
-With the defaults (lr = 0.05, 10 000 examples/epoch, 5 epochs, seed 42) the
-network reaches **~90% test accuracy**:
+With the defaults (lr = 0.05, 60 000 examples/epoch, 25 epochs, seed 42) the
+network reaches **95.49% test accuracy** on the full 10 000-image test set:
 
 ```
-Initial test accuracy: 9.90%
-epoch 1: mean loss 0.5347, test accuracy 86.60%
-epoch 3: mean loss 0.2685, test accuracy 87.10%
-epoch 5: mean loss 0.2263, test accuracy 89.75%   (peak 91.35% at epoch 4)
+Initial test accuracy: 10.08%
+epoch  1: mean loss 0.3871, test accuracy 92.17%
+epoch  3: mean loss 0.2661, test accuracy 94.07%
+epoch 25: mean loss 0.1629, test accuracy 95.49%
 ```
 
 Starting accuracy is ≈ 1/10, confirming the softmax output is near-uniform at
-initialisation. See [`results/training-log.md`](results/training-log.md) for
-the full logs, including a comparison against a too-high learning rate that
-stalls around 75%.
+initialisation. The network reaches its ~94–95% plateau by epoch 3, after which
+the accuracy oscillates from step to step as expected for online SGD with a
+fixed learning rate. See [`results/training-log.md`](results/training-log.md)
+for the full per-epoch log and the confusion-matrix error analysis.
 
 ## Testing
 
-`stack test` runs 14 QuickCheck properties (100 cases each) covering the linear
+`stack test` runs 16 QuickCheck properties (100 cases each) covering the linear
 algebra, activations, loss, and — most importantly — the backward passes:
 `Layer.backward` and `Network.networkBackward` are checked against **numerical
 finite-difference gradients**, so the hand-written backprop is verified, not
@@ -121,7 +122,7 @@ just assumed.
 - Matrices and vectors are boxed `Data.Vector`s with no BLAS, so a full run of
   the defaults takes a few minutes; the emphasis here is on type-level
   correctness, not throughput.
-- `paper/` is a placeholder for a write-up and is currently empty.
+- `paper/` contains the LaTeX write-up (`main.tex`, `references.bib`).
 
 ## License
 

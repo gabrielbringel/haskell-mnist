@@ -58,7 +58,7 @@ backpropagation---with no automatic-differentiation library---in which each
 gradient carries the type of the tensor it differentiates, so the backward pass
 is shape-checked exactly as the forward pass is. We verify the hand-derived
 gradients against finite differences with a property-based test suite, and, as an
-end-to-end confirmation, train the typed network on MNIST to ${\sim}90\%$ test
+end-to-end confirmation, train the typed network on MNIST to ${\sim}95\%$ test
 accuracy without automatic differentiation or BLAS. The result shows that a
 mainstream functional language, without a specialized dependent type theory, is
 already expressive enough to make an entire category of numerical bug
@@ -160,7 +160,7 @@ by the compiler rejecting a deliberate mismatch (\Cref{lst:dimerror}), and the
 numerical content is verified by a property-based test suite in which the
 hand-derived gradients are checked against finite differences. As an end-to-end
 confirmation that the typed forward and backward passes are correct, the network
-trains on MNIST to ${\sim}90\%$ test accuracy with no automatic differentiation
+trains on MNIST to ${\sim}95\%$ test accuracy with no automatic differentiation
 and no BLAS (\Cref{sec:results}).
 
 \paragraph{Contributions.}
@@ -175,7 +175,7 @@ In summary, this paper contributes:
     library; and
   \item a property-based verification of the hand-derived gradients against
     finite differences, together with an end-to-end functional result
-    (${\sim}90\%$ on MNIST) confirming the typed implementation trains correctly.
+    (${\sim}95\%$ on MNIST) confirming the typed implementation trains correctly.
 \end{itemize}
 
 %% =============================================================================
@@ -475,13 +475,12 @@ competitive accuracy, we organize the evaluation around three questions: does th
 implementation guarantee what it claims (\Cref{sec:res:correct}); does the typed
 network actually train (\Cref{sec:res:training}); and where does it fail
 (\Cref{sec:res:errors}). We close with the limitations of the evaluation scope
-(\Cref{sec:res:limits}). \Cref{tab:setup} lists the configuration shared by all
-runs.
+(\Cref{sec:res:limits}). \Cref{tab:setup} lists the configuration of the
+experiment.
 
 \begin{table}[t]
   \centering
-  \caption{Experimental configuration. All runs share these settings; only the
-    learning rate is varied (\Cref{sec:res:training}).}
+  \caption{Experimental configuration for the training run.}
   \label{tab:setup}
   \begin{tabular}{ll}
     \toprule
@@ -492,11 +491,11 @@ runs.
     Bias init          & $0$ \\
     Loss               & cross-entropy \\
     Optimizer          & online (per-example) SGD \\
-    Examples / epoch   & $10\,000$ (subset of $60\,000$) \\
-    Test examples      & $2\,000$ (subset of $10\,000$) \\
-    Epochs             & $5$ \\
+    Learning rate      & $0.05$ \\
+    Examples / epoch   & $60\,000$ (full train set) \\
+    Test examples      & $10\,000$ (full test set) \\
+    Epochs             & $25$ \\
     RNG seed           & $42$ \\
-    Runtime            & ${\sim}7.5$ min / run (GHC 9.4.8, \texttt{-O2}) \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -513,7 +512,7 @@ runs.
 The type system guarantees that shapes line up, but it cannot catch a
 sign error or a transposed axis in a hand-written gradient, since such a mistake
 is still well-shaped. We therefore verify the numerical content of the
-implementation with a property-based test suite: $14$ QuickCheck properties, each
+implementation with a property-based test suite: $16$ QuickCheck properties, each
 run on $100$ randomized inputs, all passing. The properties cover the shaped
 linear algebra (transpose involution, matrix--vector product against a naive
 reference, outer-product elements), the activations and loss, and---most
@@ -527,34 +526,32 @@ definition of the derivative rather than assumed.
 \subsection{Training and accuracy}
 \label{sec:res:training}
 
-\begin{figure*}[t]
+\begin{figure}[t]
   \centering
-  \includegraphics[width=\textwidth]{../fig-training.pdf}
-  \caption{Mean training loss (a) and test accuracy (b) per epoch for the two
-    learning rates. The larger rate ($0.10$) oscillates and stalls; the smaller
-    rate ($0.05$) descends smoothly and reaches ${\sim}90\%$. Epoch $0$ in (b) is
-    the accuracy at initialization ($9.90\%$), shared by both runs.}
+  \includegraphics[width=\columnwidth]{../fig-training.pdf}
+  \caption{Mean training loss (a) and test accuracy (b) per epoch over the
+    $25$-epoch run. Epoch $0$ in (b) is the accuracy at initialization
+    ($10.08\%$, near the $1/10$ chance rate); the network reaches its
+    ${\sim}94\text{--}95\%$ plateau within a few epochs and finishes at
+    $95.49\%$.}
   \label{fig:training}
-\end{figure*}
+\end{figure}
 
-To confirm that the typed network trains as an ordinary classifier, we run it on
-MNIST with the default learning rate of $0.05$. Test accuracy rises from
-$9.90\%$ at initialization---near the $1/10$ chance rate, confirming a
-near-uniform softmax output before training---to a peak of $91.35\%$ at epoch $4$,
-finishing at $89.75\%$ after five epochs, while the mean per-example
-cross-entropy falls monotonically from $0.53$ to $0.23$ (\Cref{fig:training}).
-For a from-scratch network with no mini-batching and no BLAS, reaching
-${\sim}90\%$ is a functional sanity check that the typed forward and backward
-passes are correct end to end, not a competitive claim.
-
-The learning rate is the one hyperparameter that decides whether the network
-converges, which we show by comparing $0.05$ against $0.10$ under an otherwise
-identical protocol. At $0.10$ the loss stalls around $0.94$ and accuracy
-oscillates between $70\%$ and $78\%$ across epochs: for batch-size-one SGD, the
-larger step overshoots and the parameters bounce around a minimum instead of
-settling into it. Halving the rate to $0.05$ removes the oscillation and yields
-the smooth descent above. This is the paper's single ablation, and it isolates
-the step size as the decisive factor.
+To confirm that the typed network trains as an ordinary classifier, we train it
+on the full MNIST training set ($60\,000$ images) for $25$ epochs at a learning
+rate of $0.05$ and evaluate on the full $10\,000$-image test set after each
+epoch. Test accuracy rises from $10.08\%$ at initialization---near the $1/10$
+chance rate, confirming a near-uniform softmax output before training---to
+$95.49\%$ after $25$ epochs, while the mean per-example cross-entropy falls from
+$0.3871$ to $0.1629$ (\Cref{fig:training}). The network is already on its
+${\sim}94\text{--}95\%$ plateau by epoch $3$; from there the epoch-to-epoch
+accuracy oscillates within a couple of points (for instance a dip to $91.93\%$
+at epoch $6$), the expected behavior of online, batch-size-one SGD with a fixed
+learning rate, whose single-example steps nudge the parameters around the
+minimum rather than settling exactly into it. For a from-scratch network with no
+mini-batching and no BLAS, reaching ${\sim}95\%$ is a functional sanity check
+that the typed forward and backward passes are correct end to end, not a
+competitive claim.
 
 \subsection{Error analysis}
 \label{sec:res:errors}
@@ -562,35 +559,37 @@ the step size as the decisive factor.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{../fig-confusion.pdf}
-  \caption{Confusion matrix on the test subset for the final $\text{lr}=0.05$
-    network (epoch $5$, ${\sim}89.75\%$). Color encodes the row-normalized
+  \caption{Confusion matrix on the full $10\,000$-image test set after $25$
+    epochs (final accuracy $95.49\%$). Color encodes the row-normalized
     frequency; annotations are raw counts.}
   \label{fig:confusion}
 \end{figure}
 
-\Cref{fig:confusion} shows the confusion matrix of the final $\text{lr}=0.05$
-network on the test subset. Most of the mass lies on the diagonal, consistent
-with the ${\sim}90\%$ accuracy. The off-diagonal errors are not spread uniformly;
-\Cref{fig:confusion} lets us read off which digit pairs dominate the residual
-error for this run.
-% TODO: after generating results/confusion-matrix.csv, name the top 2-3 confused
-% pairs and add one sentence interpreting them (MNIST commonly confuses visually
-% similar pairs such as 4/9, 3/5, 7/9). Replace this comment with the real ones.
+\Cref{fig:confusion} shows the confusion matrix on the full test set. Most of
+the mass lies on the diagonal---which sums to $9\,549$ of $10\,000$, matching
+the $95.49\%$ accuracy exactly---but the off-diagonal errors are not spread
+uniformly. The most frequently confused pairs are $4\!\to\!9$ ($28$),
+$6\!\to\!5$ ($28$), $2\!\to\!8$ ($26$), $3\!\to\!8$ ($24$), $9\!\to\!8$ ($24$),
+$7\!\to\!9$ ($21$), and $5\!\to\!8$ ($20$), the visually similar pairs that
+MNIST classifiers routinely struggle with. The most revealing pattern is the
+column for the digit $8$: it absorbs $127$ false positives---$2$, $3$, $5$, and
+$9$ are all commonly misread as $8$---giving it the lowest precision of any
+class ($\sim\!87.9\%$). By recall the hardest digits are $7$ ($93.8\%$), $6$
+($94.0\%$), and $2$ ($94.3\%$), while $0$ ($98.9\%$) and $1$ ($98.7\%$) are the
+easiest, consistent with their distinctive shapes.
 
 \subsection{Scope and limitations}
 \label{sec:res:limits}
 
 The evaluation is deliberately modest, matching the project's emphasis on
-type-level correctness over throughput. We train on a $10\,000$-image subset and
-evaluate on a $2\,000$-image subset rather than the full sets, to keep wall time
-reasonable under a boxed-\texttt{Vector} implementation with no BLAS. We report a
-single run per configuration at a fixed seed, so the curves in
-\Cref{fig:training} carry no error bars; the learning-rate comparison should be
-read as indicative rather than as a statistically controlled study. Finally,
-training uses online SGD with one gradient step per image, not mini-batches, so
-the loss curves are noisier than a batched optimizer would produce. None of these
-choices bear on the correctness claims of \Cref{sec:res:correct}, which are
-independent of the training subset or seed.
+type-level correctness over throughput. We report a single run at a fixed seed,
+so the curves in \Cref{fig:training} carry no error bars and should be read as
+indicative rather than as a statistically controlled study. Training uses online
+SGD with one gradient step per image, not mini-batches, so the loss curves are
+noisier than a batched optimizer would produce, and we make no attempt to tune
+the architecture or learning rate for peak accuracy. None of these choices bear
+on the correctness claims of \Cref{sec:res:correct}, which are independent of the
+seed.
 
 %% =============================================================================
 %% 6. Conclusion
@@ -615,14 +614,14 @@ content of the implementation is verified by a property-based test suite in whic
 the hand-derived gradients are checked against finite differences over randomized
 inputs (\Cref{sec:res:correct}). As a functional confirmation that the typed
 forward and backward passes are correct end to end, the network trains on MNIST
-to ${\sim}90\%$ test accuracy with no automatic-differentiation library and no
+to ${\sim}95\%$ test accuracy with no automatic-differentiation library and no
 BLAS (\Cref{fig:training}). The broader takeaway is that a mainstream functional
 language, without a specialized dependent type theory, is already expressive
 enough to make an entire category of numerical bug unrepresentable, and to do so
 without hiding the mathematics inside a framework.
 
 The scope of the work is deliberately narrow. The architecture is a single
-two-layer classifier trained with online SGD on subsets of MNIST, and the
+two-layer classifier trained with online SGD on MNIST, and the
 emphasis on type-level correctness comes at the cost of throughput: boxed vectors
 with no BLAS make a full run take minutes rather than seconds. These are
 boundaries of the demonstration, not of the technique. The natural next step is
