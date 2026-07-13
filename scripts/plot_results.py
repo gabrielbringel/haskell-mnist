@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Gera as figuras de Results do paper haskell-mnist.
+"""Generates the Results figures for the haskell-mnist paper.
 
-Figuras:
-  results/fig-training.pdf   — 2 painéis: (a) loss, (b) acurácia por época,
-                               comparando lr=0.10 e lr=0.05.
-  results/fig-confusion.pdf  — matriz de confusão 10x10 no test set.
+Figures:
+  results/fig-training.pdf   — two stacked panels: (a) loss, (b) accuracy per
+                               epoch, for the full 25-epoch run.
+  results/fig-confusion.pdf  — 10x10 confusion matrix over the test set.
 
-Entradas:
-  results/training-metrics.csv   (espelha training-log.md)
-  results/confusion-matrix.csv   (grade 10x10 de inteiros, gerada pelo executável)
+Inputs:
+  results/training-metrics.csv   (mirrors training-log.md)
+  results/confusion-matrix.csv   (10x10 integer grid, written by the executable)
 
-Uso:
-  pip install matplotlib pandas numpy
+Usage:
+  pip install -r requirements.txt
   python scripts/plot_results.py
 """
 
@@ -24,7 +24,7 @@ import matplotlib.pyplot as plt
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
 
-# Estilo compartilhado — tamanhos legíveis em coluna de paper.
+# Shared style — sizes that stay legible in a paper column.
 plt.rcParams.update({
     "font.size": 9,
     "axes.titlesize": 10,
@@ -33,52 +33,21 @@ plt.rcParams.update({
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
     "figure.dpi": 150,
-    # Descomente para casar com a fonte serifada do template ACM:
+    # Uncomment to match the serif font of the ACM template:
     # "font.family": "serif",
 })
 
-# Cores + marcadores + traço: distinguíveis também em preto-e-branco.
-STYLES = {
-    "0.10": dict(color="#1b9e77", marker="s", linestyle="--", label="lr = 0.10"),
-    "0.05": dict(color="#7570b3", marker="o", linestyle="-",  label="lr = 0.05"),
-}
-
-
-def training_figure():
-    path = os.path.join(RESULTS_DIR, "training-metrics.csv")
-    df = pd.read_csv(path)
-    df["lr_str"] = df["lr"].map(lambda x: f"{x:.2f}")
-
-    fig, (ax_loss, ax_acc) = plt.subplots(1, 2, figsize=(7, 2.9))
-
-    for lr_str, style in STYLES.items():
-        run = df[df["lr_str"] == lr_str].sort_values("epoch")
-        loss = run.dropna(subset=["loss"])           # sem loss na época 0
-        ax_loss.plot(loss["epoch"], loss["loss"], **style)
-        ax_acc.plot(run["epoch"], run["accuracy"], **style)
-
-    ax_loss.set_title("(a) Mean training loss")
-    ax_loss.set_xlabel("epoch")
-    ax_loss.set_ylabel("cross-entropy loss")
-
-    ax_acc.set_title("(b) Test accuracy")
-    ax_acc.set_xlabel("epoch")
-    ax_acc.set_ylabel("accuracy (%)")
-    ax_acc.legend()
-
-    for ax in (ax_loss, ax_acc):
-        ax.set_xticks(range(0, 6))
-        ax.set_xlim(-0.2, 5.2)
-        ax.grid(True, alpha=0.3)
-
-    fig.tight_layout()
-    out = os.path.join(RESULTS_DIR, "fig-training.pdf")
-    fig.savefig(out, bbox_inches="tight")
-    plt.close(fig)
-    print("Escrito:", out)
+# Single curve for the full run; solid line with a small marker.
+LINE = dict(color="#7570b3", marker="o", markersize=3, linestyle="-")
 
 
 def confusion_figure():
+    """Writes results/fig-confusion.pdf: the row-normalized confusion matrix
+    over the test set, annotated with the raw counts.
+
+    Does nothing (and warns) if confusion-matrix.csv has not been generated
+    yet, or if it is not square.
+    """
     path = os.path.join(RESULTS_DIR, "confusion-matrix.csv")
     if not os.path.exists(path):
         print(
@@ -97,20 +66,21 @@ def confusion_figure():
 
     n = counts.shape[0]
     row_sums = counts.sum(axis=1, keepdims=True)
-    # Normaliza por linha (recall por classe); protege linhas vazias (soma 0
-    # fica 0 em vez de lixo de memoria nao inicializada).
+    # Normalize by row (per-class recall); guard empty rows so a zero sum stays
+    # 0 instead of picking up uninitialized memory.
     norm = np.zeros_like(counts, dtype=float)
     np.divide(counts, row_sums, out=norm, where=row_sums != 0)
 
     fig, ax = plt.subplots(figsize=(4.2, 3.6))
     im = ax.imshow(norm, cmap="Blues", vmin=0.0, vmax=1.0)
 
+    ax.set_title("Confusion matrix (test set, 10,000 images)")
     ax.set_xticks(range(n))
     ax.set_yticks(range(n))
-    ax.set_xlabel("Predicted label")
-    ax.set_ylabel("True label")
+    ax.set_xlabel("Predicted label", fontweight="bold")
+    ax.set_ylabel("True label", fontweight="bold")
 
-    # Anota a contagem crua; cor do texto por contraste.
+    # Annotate with the raw count; text color chosen for contrast.
     for i in range(n):
         for j in range(n):
             ax.text(j, i, int(counts[i, j]), ha="center", va="center",
@@ -128,8 +98,50 @@ def confusion_figure():
 
 
 def main():
+    """Generates every figure of the Results section."""
     training_figure()
     confusion_figure()
+
+
+def training_figure():
+    """Writes results/fig-training.pdf: mean training loss and test accuracy
+    per epoch, as two vertically stacked panels read from
+    results/training-metrics.csv.
+    """
+    path = os.path.join(RESULTS_DIR, "training-metrics.csv")
+    df = pd.read_csv(path).sort_values("epoch")
+
+    # Vertically stacked panels: (a) loss on top, (b) accuracy below.
+    # A narrow, tall figure fits one column of the ACM template.
+    fig, (ax_loss, ax_acc) = plt.subplots(2, 1, figsize=(3.4, 4.8))
+
+    loss = df.dropna(subset=["loss"])            # no loss at epoch 0
+    ax_loss.plot(loss["epoch"], loss["loss"], **LINE)
+    ax_acc.plot(df["epoch"], df["accuracy"], **LINE)
+
+    ax_loss.set_title("(a) Mean training loss")
+    ax_loss.set_xlabel("epoch", fontweight="bold")
+    ax_loss.set_ylabel("cross-entropy loss", fontweight="bold")
+
+    ax_acc.set_title("(b) Test accuracy")
+    ax_acc.set_xlabel("epoch", fontweight="bold")
+    ax_acc.set_ylabel("accuracy (%)", fontweight="bold")
+
+    # Limits derived from the data; ticks every 5 epochs to avoid crowding.
+    max_epoch = int(df["epoch"].max())
+    ticks = range(0, max_epoch + 1, 5)
+    # Loss starts at epoch 1 (epoch 0 has none); accuracy includes epoch 0.
+    ax_loss.set_xlim(0.5, max_epoch + 0.5)
+    ax_acc.set_xlim(-0.5, max_epoch + 0.5)
+    for ax in (ax_loss, ax_acc):
+        ax.set_xticks(ticks)
+        ax.grid(True, alpha=0.3)
+
+    fig.tight_layout()
+    out = os.path.join(RESULTS_DIR, "fig-training.pdf")
+    fig.savefig(out, bbox_inches="tight")
+    plt.close(fig)
+    print("Escrito:", out)
 
 
 if __name__ == "__main__":
