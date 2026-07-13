@@ -11,23 +11,19 @@
 --   * @'outer' delta x@ — gradient of the weights (same shape as @w@)
 module Mat
   ( Mat(..)
-    -- * Construction
-  , mgenerate
-  , mreplicate
-  , mfromList
-    -- * Access
-  , mrows
-  , mcols
-  , mindex
-  , mrow
-    -- * Backprop operations
-  , mulV
-  , transpose
-  , outer
-    -- * Elementwise
   , madd
-  , msub
+  , mcols
+  , mfromList
+  , mgenerate
+  , mindex
+  , mreplicate
+  , mrow
+  , mrows
   , mscale
+  , msub
+  , mulV
+  , outer
+  , transpose
   ) where
 
 import           Data.Proxy   (Proxy (..))
@@ -40,21 +36,13 @@ import           Vec          (Vec (..), dot, generate, vindex)
 -- | An @r@-by-@c@ matrix of elements of type @a@, stored row-major.
 newtype Mat (r :: Nat) (c :: Nat) a = Mat (Vector a)
 
--- Construction ---------------------------------------------------------------
+-- | Pointwise addition.
+madd :: Num a => Mat r c a -> Mat r c a -> Mat r c a
+madd (Mat a) (Mat b) = Mat (V.zipWith (+) a b)
 
--- | Build a matrix from an @(i, j)@-to-value function.
-mgenerate :: forall r c a. (KnownNat r, KnownNat c) => (Int -> Int -> a) -> Mat r c a
-mgenerate f = Mat (V.generate (r * c) (\k -> f (k `div` c) (k `mod` c)))
-  where
-    r = fromIntegral (natVal (Proxy :: Proxy r))
-    c = fromIntegral (natVal (Proxy :: Proxy c))
-
--- | A matrix with every entry equal to the given value.
-mreplicate :: forall r c a. (KnownNat r, KnownNat c) => a -> Mat r c a
-mreplicate x = Mat (V.replicate (r * c) x)
-  where
-    r = fromIntegral (natVal (Proxy :: Proxy r))
-    c = fromIntegral (natVal (Proxy :: Proxy c))
+-- | Number of columns, recovered from the type.
+mcols :: forall r c a. KnownNat c => Mat r c a -> Int
+mcols _ = fromIntegral (natVal (Proxy :: Proxy c))
 
 -- | Build a matrix from a row-major list, returning 'Nothing' unless the list
 -- has exactly @r * c@ elements.
@@ -66,19 +54,23 @@ mfromList xs
     r = fromIntegral (natVal (Proxy :: Proxy r))
     c = fromIntegral (natVal (Proxy :: Proxy c))
 
--- Access ---------------------------------------------------------------------
-
--- | Number of rows, recovered from the type.
-mrows :: forall r c a. KnownNat r => Mat r c a -> Int
-mrows _ = fromIntegral (natVal (Proxy :: Proxy r))
-
--- | Number of columns, recovered from the type.
-mcols :: forall r c a. KnownNat c => Mat r c a -> Int
-mcols _ = fromIntegral (natVal (Proxy :: Proxy c))
+-- | Build a matrix from an @(i, j)@-to-value function.
+mgenerate :: forall r c a. (KnownNat r, KnownNat c) => (Int -> Int -> a) -> Mat r c a
+mgenerate f = Mat (V.generate (r * c) (\k -> f (k `div` c) (k `mod` c)))
+  where
+    r = fromIntegral (natVal (Proxy :: Proxy r))
+    c = fromIntegral (natVal (Proxy :: Proxy c))
 
 -- | Index element @(i, j)@. Callers are expected to pass valid indices.
 mindex :: forall r c a. (KnownNat r, KnownNat c) => Mat r c a -> Int -> Int -> a
 mindex m@(Mat v) i j = v V.! (i * mcols m + j)
+
+-- | A matrix with every entry equal to the given value.
+mreplicate :: forall r c a. (KnownNat r, KnownNat c) => a -> Mat r c a
+mreplicate x = Mat (V.replicate (r * c) x)
+  where
+    r = fromIntegral (natVal (Proxy :: Proxy r))
+    c = fromIntegral (natVal (Proxy :: Proxy c))
 
 -- | Extract row @i@ as a 'Vec'.
 mrow :: forall r c a. (KnownNat r, KnownNat c) => Mat r c a -> Int -> Vec c a
@@ -86,34 +78,30 @@ mrow m@(Mat v) i = Vec (V.slice (i * c) c v)
   where
     c = mcols m
 
--- Backprop operations --------------------------------------------------------
+-- | Number of rows, recovered from the type.
+mrows :: forall r c a. KnownNat r => Mat r c a -> Int
+mrows _ = fromIntegral (natVal (Proxy :: Proxy r))
+
+-- | Scalar multiplication.
+mscale :: Num a => a -> Mat r c a -> Mat r c a
+mscale k (Mat a) = Mat (V.map (k *) a)
+
+-- | Pointwise subtraction.
+msub :: Num a => Mat r c a -> Mat r c a -> Mat r c a
+msub (Mat a) (Mat b) = Mat (V.zipWith (-) a b)
 
 -- | Matrix-vector product: @r@-by-@c@ matrix times a @c@-vector gives an
 -- @r@-vector. Row @i@ of the result is @'dot' (mrow m i) x@.
 mulV :: forall r c a. (KnownNat r, KnownNat c, Num a) => Mat r c a -> Vec c a -> Vec r a
 mulV m x = generate (\i -> dot (mrow m i) x)
 
--- | Transpose: entry @(i, j)@ of the result is entry @(j, i)@ of the input.
-transpose :: forall r c a. (KnownNat r, KnownNat c) => Mat r c a -> Mat c r a
-transpose m = mgenerate (\i j -> mindex m j i)
-
 -- | Outer product: entry @(i, j)@ is @u[i] * v[j]@.
 outer :: forall r c a. (KnownNat r, KnownNat c, Num a) => Vec r a -> Vec c a -> Mat r c a
 outer u v = mgenerate (\i j -> vindex u i * vindex v j)
 
--- Elementwise ----------------------------------------------------------------
-
--- | Pointwise addition.
-madd :: Num a => Mat r c a -> Mat r c a -> Mat r c a
-madd (Mat a) (Mat b) = Mat (V.zipWith (+) a b)
-
--- | Pointwise subtraction.
-msub :: Num a => Mat r c a -> Mat r c a -> Mat r c a
-msub (Mat a) (Mat b) = Mat (V.zipWith (-) a b)
-
--- | Scalar multiplication.
-mscale :: Num a => a -> Mat r c a -> Mat r c a
-mscale k (Mat a) = Mat (V.map (k *) a)
+-- | Transpose: entry @(i, j)@ of the result is entry @(j, i)@ of the input.
+transpose :: forall r c a. (KnownNat r, KnownNat c) => Mat r c a -> Mat c r a
+transpose m = mgenerate (\i j -> mindex m j i)
 
 -- Instances ------------------------------------------------------------------
 

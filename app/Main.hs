@@ -1,5 +1,7 @@
 -- | Entry point: load MNIST, train a two-layer network with online SGD, and
--- report test-set accuracy after each epoch.
+-- report test-set accuracy after each epoch. After the last epoch the
+-- confusion matrix over the test set is printed and written to
+-- @results/confusion-matrix.csv@.
 module Main (main) where
 
 import           Control.Monad (foldM)
@@ -37,10 +39,8 @@ testSize = 10000       -- examples used to estimate accuracy
 seed :: Int
 seed = 42
 
--- | One-hot encode a class index into an 'Output'-dimensional target vector.
-oneHot :: Int -> Vec Output Double
-oneHot k = Vec.generate (\j -> if j == k then 1 else 0)
-
+-- | Load the dataset, train for 'epochs' epochs, reporting the mean loss and
+-- the test accuracy after each one, then emit the final confusion matrix.
 main :: IO ()
 main = do
   putStrLn "Loading MNIST..."
@@ -71,15 +71,11 @@ main = do
   writeFile "results/confusion-matrix.csv" (toCSV cm)
   putStrLn "Escrito: results/confusion-matrix.csv"
 
--- | CSV 10×10 puro: linha = rótulo real (0..9), coluna = previsto (0..9),
--- sem cabeçalho nem coluna de índice — direto para matplotlib/numpy.
-toCSV :: Mat.Mat Output Output Int -> String
-toCSV cm = unlines
-  [ intercalate "," [ show (Mat.mindex cm t p) | p <- [0 .. n - 1] ]
-  | t <- [0 .. n - 1] ]
-  where n = Mat.mrows cm
+-- | One-hot encode a class index into an 'Output'-dimensional target vector.
+oneHot :: Int -> Vec Output Double
+oneHot k = Vec.generate (\j -> if j == k then 1 else 0)
 
--- | Render legível para o stdout, colunas alinhadas.
+-- | Render the confusion matrix for stdout, with right-aligned columns.
 renderConfusion :: Mat.Mat Output Output Int -> String
 renderConfusion cm = unlines
   [ concatMap (pad . show . Mat.mindex cm t) [0 .. n - 1]
@@ -87,3 +83,12 @@ renderConfusion cm = unlines
   where
     n       = Mat.mrows cm
     pad s   = replicate (6 - length s) ' ' ++ s
+
+-- | Serialise the confusion matrix as a bare 10×10 CSV grid: row = true label
+-- (0..9), column = predicted label (0..9), with no header row and no index
+-- column — ready to be read straight into matplotlib/numpy.
+toCSV :: Mat.Mat Output Output Int -> String
+toCSV cm = unlines
+  [ intercalate "," [ show (Mat.mindex cm t p) | p <- [0 .. n - 1] ]
+  | t <- [0 .. n - 1] ]
+  where n = Mat.mrows cm

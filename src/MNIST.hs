@@ -7,10 +7,10 @@
 --   * @data/train-images-idx3-ubyte@ + @data/train-labels-idx1-ubyte@
 --   * @data/t10k-images-idx3-ubyte@  + @data/t10k-labels-idx1-ubyte@
 module MNIST
-  ( loadTraining
-  , loadTest
-  , MNISTImage
+  ( MNISTImage
   , MNISTLabel
+  , loadTest
+  , loadTraining
   ) where
 
 import           Data.Bits      (shiftL, (.|.))
@@ -27,16 +27,8 @@ type MNISTImage = Vec 784 Double
 -- | A digit label in @0..9@.
 type MNISTLabel = Int
 
--- | Load the 60 000-image training set. Images and labels are paired by index.
-loadTraining :: IO ([MNISTImage], [MNISTLabel])
-loadTraining = loadMNIST "data/train-images-idx3-ubyte" "data/train-labels-idx1-ubyte"
-
--- | Load the 10 000-image test set. Images and labels are paired by index.
-loadTest :: IO ([MNISTImage], [MNISTLabel])
-loadTest = loadMNIST "data/t10k-images-idx3-ubyte" "data/t10k-labels-idx1-ubyte"
-
--- Internal --------------------------------------------------------------------
-
+-- | Load an image/label file pair, checking the IDX magic numbers, the 28×28
+-- image shape, and that the two files agree on the example count.
 loadMNIST :: FilePath -> FilePath -> IO ([MNISTImage], [MNISTLabel])
 loadMNIST imagesPath labelsPath = do
   imgBytes <- BS.readFile imagesPath
@@ -61,6 +53,14 @@ loadMNIST imagesPath labelsPath = do
       labels = parseLabels nLbls lblData
   pure (images, labels)
 
+-- | Load the 10 000-image test set. Images and labels are paired by index.
+loadTest :: IO ([MNISTImage], [MNISTLabel])
+loadTest = loadMNIST "data/t10k-images-idx3-ubyte" "data/t10k-labels-idx1-ubyte"
+
+-- | Load the 60 000-image training set. Images and labels are paired by index.
+loadTraining :: IO ([MNISTImage], [MNISTLabel])
+loadTraining = loadMNIST "data/train-images-idx3-ubyte" "data/train-labels-idx1-ubyte"
+
 -- | Slices the first 16 bytes of a ByteString into four big-endian 32-bit
 -- integers. The caller is responsible for interpreting the fields according to
 -- the IDX format: [magic, count, rows?, cols?] for images; [magic, count] for
@@ -79,12 +79,6 @@ parseImageHeader (magic, count, rows, cols)
   | magic /= 2051 = error ("MNIST: bad image magic number " ++ show magic ++ ", expected 2051")
   | otherwise     = (count, rows, cols)
 
--- | Verify label magic number @2049@ and extract count.
-parseLabelHeader :: (Int, Int, Int, Int) -> Int
-parseLabelHeader (magic, count, _, _)
-  | magic /= 2049 = error ("MNIST: bad label magic number " ++ show magic ++ ", expected 2049")
-  | otherwise     = count
-
 -- | Parse @count@ images, each @28×28 = 784@ raw bytes (grayscale, 0–255),
 -- normalised to @[0, 1]@.
 parseImages :: Int -> ByteString -> [MNISTImage]
@@ -96,6 +90,12 @@ parseImages count bs = map parseImage (take count slices)
       in case Vec.fromList (map (\b -> fromIntegral b / 255.0) bytes) of
            Just v  -> v
            Nothing -> error "MNIST: internal error — Vec.fromList failed for 784 elements"
+
+-- | Verify label magic number @2049@ and extract count.
+parseLabelHeader :: (Int, Int, Int, Int) -> Int
+parseLabelHeader (magic, count, _, _)
+  | magic /= 2049 = error ("MNIST: bad label magic number " ++ show magic ++ ", expected 2049")
+  | otherwise     = count
 
 -- | Parse @count@ labels, each a single byte (digit 0–9).
 parseLabels :: Int -> ByteString -> [MNISTLabel]

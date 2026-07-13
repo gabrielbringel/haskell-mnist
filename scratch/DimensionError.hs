@@ -1,13 +1,13 @@
 {-# LANGUAGE DataKinds #-}
 -- | scratch/DimensionError.hs
 --
--- NAO faz parte da build do projeto (nao esta em exposed-modules do .cabal).
--- Existe so para gerar, de proposito, o erro de compilacao usado como
--- "Listing 1" no artigo: prova de que uma dimensao incompativel e rejeitada
--- em tempo de compilacao, nao em tempo de execucao.
+-- NOT part of the project build (it is not listed in the .cabal
+-- exposed-modules). It exists only to trigger, on purpose, the compile error
+-- used as "Listing 1" in the paper: proof that an incompatible dimension is
+-- rejected at compile time rather than at run time.
 --
--- O mismatch: `weirdMat` e uma Mat 10 5, entao `mulV` espera um Vec 5.
--- Passamos um Vec 3 de proposito.
+-- The mismatch: 'weirdMat' is a @Mat 10 5@, so 'Mat.mulV' expects a @Vec 5@.
+-- We deliberately pass it a @Vec 3@.
 module Main (main) where
 
 import Mat (Mat)
@@ -15,11 +15,14 @@ import qualified Mat
 import Vec (Vec)
 import qualified Vec
 
-weirdMat :: Mat 10 5 Double
-weirdMat = Mat.mgenerate (\_ _ -> 0)
-
+-- | A 3-element vector — deliberately the wrong width for 'weirdMat'.
 badVec :: Vec 3 Double
 badVec = Vec.replicate 0
 
+-- | Applies 'weirdMat' to 'badVec', which fails to type check.
 main :: IO ()
 main = print (Mat.mulV weirdMat badVec)
+
+-- | A 10-by-5 zero matrix, whose 'Mat.mulV' expects a 5-element vector.
+weirdMat :: Mat 10 5 Double
+weirdMat = Mat.mgenerate (\_ _ -> 0)

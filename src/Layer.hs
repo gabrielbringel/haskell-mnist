@@ -13,8 +13,8 @@
 --   @dL/dx = W^T * dZ@   →  @mulV (transpose w) dZ@  (same shape as @x@)
 module Layer
   ( Layer(..)
-  , forward
   , backward
+  , forward
   ) where
 
 import           GHC.TypeNats (KnownNat, Nat)
@@ -30,14 +30,6 @@ data Layer (c :: Nat) (r :: Nat) = Layer
   { weights :: Mat r c Double
   , bias    :: Vec r Double
   }
-
--- | Forward pass: @Z = W x + b@ (pre-activation logits).
-forward
-  :: (KnownNat c, KnownNat r)
-  => Layer c r
-  -> Vec c Double    -- ^ input activations (from previous layer or raw data)
-  -> Vec r Double    -- ^ pre-activation output
-forward layer x = Vec.vadd (Mat.mulV (weights layer) x) (bias layer)
 
 -- | Backward pass: given the upstream gradient @dZ@ (gradient of the loss
 -- with respect to this layer's /pre-activation/ output), returns:
@@ -57,3 +49,11 @@ backward layer x dZ = (dW, dB, dX)
     dW = Mat.outer dZ x           -- dL/dW = dZ * x^T  (outer product)
     dB = dZ                       -- dL/db = dZ
     dX = Mat.mulV (Mat.transpose w) dZ  -- dL/dx = W^T * dZ
+
+-- | Forward pass: @Z = W x + b@ (pre-activation logits).
+forward
+  :: (KnownNat c, KnownNat r)
+  => Layer c r
+  -> Vec c Double    -- ^ input activations (from previous layer or raw data)
+  -> Vec r Double    -- ^ pre-activation output
+forward layer x = Vec.vadd (Mat.mulV (weights layer) x) (bias layer)

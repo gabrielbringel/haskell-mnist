@@ -21,6 +21,20 @@ import qualified Mat
 import           Network       (Network (..))
 import qualified Vec
 
+-- | An @r@-by-@c@ matrix whose entries are drawn uniformly from @[-l, l]@.
+randomMat
+  :: forall r c. (KnownNat r, KnownNat c)
+  => Double     -- ^ limit @l@
+  -> StdGen
+  -> Mat r c Double
+randomMat limit g =
+  case Mat.mfromList (take n (randomRs (-limit, limit) g)) of
+    Just m  -> m
+    Nothing -> error "randomMat: size mismatch (unreachable)"
+  where
+    n = fromIntegral (natVal (Proxy :: Proxy r))
+      * fromIntegral (natVal (Proxy :: Proxy c)) :: Int
+
 -- | Build a random two-layer network from a seed generator. The hidden and
 -- output weight matrices get independent generators (via 'split'); both bias
 -- vectors are zero.
@@ -38,17 +52,3 @@ randomNetwork g = Network
     (g1, g2) = split g
     w1 = randomMat (sqrt (6 / fanIn1)) g1
     w2 = randomMat (sqrt (6 / fanIn2)) g2
-
--- | An @r@-by-@c@ matrix whose entries are drawn uniformly from @[-l, l]@.
-randomMat
-  :: forall r c. (KnownNat r, KnownNat c)
-  => Double     -- ^ limit @l@
-  -> StdGen
-  -> Mat r c Double
-randomMat limit g =
-  case Mat.mfromList (take n (randomRs (-limit, limit) g)) of
-    Just m  -> m
-    Nothing -> error "randomMat: size mismatch (unreachable)"
-  where
-    n = fromIntegral (natVal (Proxy :: Proxy r))
-      * fromIntegral (natVal (Proxy :: Proxy c)) :: Int
