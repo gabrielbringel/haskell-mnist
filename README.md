@@ -47,12 +47,13 @@ Backprop identities used, for a linear layer `Z = W x + b`:
 | `Activation`    | ReLU / ReLU′ and numerically-stable `softmax`                      |
 | `Loss`          | cross-entropy and its gradient                                     |
 | `Layer`         | a linear layer with typed `forward` / `backward`                   |
-| `Network`       | two-layer composition; `networkForward`, `networkBackward`, `predict`, `accuracy` |
+| `Network`       | two-layer composition; `networkForward`, `networkBackward`, `predict`, `accuracy`, `confusionMatrix` |
 | `Init`          | He-uniform random weight initialisation (pure, seeded)             |
 | `Train`         | SGD `trainStep` / `trainEpoch` / `trainEpochs`                     |
 | `MNIST`         | IDX file-format loader for images and labels                       |
-| `app/Main.hs`   | executable entry point: load data → train → report accuracy        |
+| `app/Main.hs`   | executable entry point: load data → train → report accuracy → write confusion matrix |
 | `test/Spec.hs`  | QuickCheck property suite                                           |
+| `scripts/plot_results.py` | matplotlib figures (training curves, confusion matrix) for the paper |
 
 ## Requirements
 
