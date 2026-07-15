@@ -27,15 +27,14 @@
 }
 
 %% ---- Metadata -----------------------------------------------------------------
-\title{Compile-Time Dimension Safety for Neural Networks:\\
-  A Type-Indexed MNIST Classifier in Haskell}
+\title{An Auditable, Type-Indexed MNIST Classifier in Haskell}
 
 \author{Gabriel Bringel Gonçalves}
 \affiliation{%
-  \institution{Universidade Federal da Paraíba}% TODO: your university / course
+  \institution{Universidade Federal da Paraíba}
   \city{João Pessoa, PB}
   \country{Brazil}}
-\email{gbg@academico.ufpb.br}% TODO: your email
+\email{gbg@academico.ufpb.br}
 
 \begin{document}
 
@@ -44,25 +43,30 @@
 %% =============================================================================
 \begin{abstract}
 Neural networks are built from tensor operations whose correctness depends on
-matching dimensions, yet in mainstream frameworks a shape is an ordinary runtime
-value, so a mismatched product or an incompatibly composed layer fails only at
-execution---late, displaced from its cause, and only on code paths that are run.
-Our insight is that these dimensions can be lifted into the type system, where
-the compiler checks them. We implement this in Haskell by indexing every vector
-and matrix with its size as a type-level natural: a length-$n$ vector has type
-$\mathtt{Vec}\ n$ and an $r\times c$ matrix has type $\mathtt{Mat}\ r\ c$, and
-each operation is typed so that only dimension-consistent uses are well-formed.
-A mismatch therefore becomes a compile-time error rather than a runtime crash,
-and the same discipline extends to a hand-written, typed reverse-mode
-backpropagation---with no automatic-differentiation library---in which each
-gradient carries the type of the tensor it differentiates, so the backward pass
-is shape-checked exactly as the forward pass is. We verify the hand-derived
-gradients against finite differences with a property-based test suite, and, as an
-end-to-end confirmation, train the typed network on MNIST to ${\sim}95\%$ test
-accuracy without automatic differentiation or BLAS. The result shows that a
-mainstream functional language, without a specialized dependent type theory, is
-already expressive enough to make an entire category of numerical bug
-unrepresentable.
+matching dimensions, and shape mismatches are a documented, recurring class of
+fault in deep-learning code. In mainstream frameworks a shape is an ordinary
+runtime value, so a mismatched product or an incompatibly composed layer fails
+only at execution---late, displaced from its cause, and only on code paths that
+are run. Lifting these dimensions into the type system, where the compiler
+checks them, is an idea that typed array languages and typed neural-network
+libraries in Haskell already realize. We revisit it not as another library but
+as a minimal, auditable reconstruction. In this feedforward MNIST classifier the
+linear algebra, the forward pass, and a hand-written reverse-mode
+backpropagation are all written from scratch---no BLAS, no
+automatic-differentiation engine, no external binding---with every vector and
+matrix indexed by its size as a type-level natural, so that a length-$n$ vector
+has type $\mathtt{Vec}\ n$ and an $r\times c$ matrix has type
+$\mathtt{Mat}\ r\ c$. A dimension mismatch is therefore a compile-time error
+rather than a runtime crash, and the same discipline extends to the backward
+pass, in which each gradient carries the type of the tensor it differentiates,
+so the reverse pass is shape-checked exactly as the forward pass is. Because a
+well-typed gradient can still be numerically wrong, we verify the hand-derived
+gradients \emph{per-element} (component by component) against finite differences
+in a property-based test suite of $16$ QuickCheck properties, and, as an
+end-to-end confirmation that the typed passes are correct, train the network on
+MNIST to $95.49\%$ test accuracy. The contribution is expository: it makes legible and
+checkable, in the text of one small program, the shape discipline that
+production libraries encapsulate.
 \end{abstract}
 
 \maketitle
@@ -80,7 +84,12 @@ those dimensions are ordinary runtime values, and a shape mismatch is caught onl
 when the offending operation executes~\cite{numpy,pytorch}. The resulting error
 is both late and displaced: it surfaces as an exception deep inside a
 computation, often far from the line that introduced the wrong shape, and only if
-that code path is run at all.
+that code path is run at all. This is not a hypothetical failure mode: an
+empirical study of deep-learning code finds shape and dimension mismatches among
+the most common fault categories~\cite{zhang2018empirical}, and the difficulty of
+catching them statically, rather than after the fact, has motivated dedicated
+analyses that reconstruct a program's tensor shapes from its framework
+code~\cite{lagouvardos2020pythia}.
 
 This runtime character is the root of the problem. Because a tensor's shape is
 not part of its type, the compiler cannot see that a $10\times5$ matrix is being
@@ -158,24 +167,37 @@ differentiation engine (\Cref{sec:backprop}).
 We validate the implementation on two fronts. The type-level guarantee is shown
 by the compiler rejecting a deliberate mismatch (\Cref{lst:dimerror}), and the
 numerical content is verified by a property-based test suite in which the
-hand-derived gradients are checked against finite differences. As an end-to-end
-confirmation that the typed forward and backward passes are correct, the network
-trains on MNIST to ${\sim}95\%$ test accuracy with no automatic differentiation
-and no BLAS (\Cref{sec:results}).
+hand-derived gradients are checked \emph{per-element} against finite
+differences. As an end-to-end confirmation that the typed forward and backward
+passes are correct, the network trains on MNIST to $95.49\%$ test accuracy with
+no automatic differentiation and no BLAS (\Cref{sec:results}).
+
+This project is not another library but a minimal, auditable reconstruction, and
+its aim is expository: to make legible, in the text of one small program, the
+shape discipline that typed Haskell tensor libraries already encapsulate.
+Type-indexed tensors for neural networks are not themselves new---Grenade,
+TensorSafe, and Hasktorch all realize them, and Grenade likewise verifies its
+backpropagation by finite differences (\Cref{sec:bg:related}). What distinguishes
+this work is one of degree, not of concept: it writes the linear algebra, the
+forward pass, and the backward pass all by hand on a minimal, fixed-size core,
+depending on no linear-algebra library, so that every operation and every
+gradient stays legible and finite-difference-verified in the program's own
+text.
 
 \paragraph{Contributions.}
 In summary, this paper contributes:
 \begin{itemize}
-  \item a feedforward MNIST classifier in Haskell whose tensor dimensions are
-    type-level naturals, turning every dimension mismatch---within an operation
-    or across composed layers---into a compile-time error;
+  \item a legible, auditable reconstruction of a feedforward MNIST classifier in
+    Haskell whose tensor dimensions are type-level naturals, turning every
+    dimension mismatch---within an operation or across composed layers---into a
+    compile-time error;
   \item a hand-written, typed reverse-mode backpropagation in which each gradient
     carries the type of the tensor it differentiates, so the backward pass is
     shape-checked like the forward pass, with no automatic-differentiation
     library; and
-  \item a property-based verification of the hand-derived gradients against
-    finite differences, together with an end-to-end functional result
-    (${\sim}95\%$ on MNIST) confirming the typed implementation trains correctly.
+  \item a per-element verification of the hand-derived gradients
+    against finite differences, together with an end-to-end functional result
+    ($95.49\%$ on MNIST) confirming the typed implementation trains correctly.
 \end{itemize}
 
 %% =============================================================================
@@ -219,24 +241,98 @@ rather than a runtime fault (\Cref{sec:architecture}).
 \subsection{Related work}
 \label{sec:bg:related}
 
-\paragraph{Shape safety in numerical computing.}
-Mainstream tensor frameworks such as NumPy and PyTorch represent shapes as
-ordinary runtime values and check them dynamically: an incompatible product
-raises an exception when the offending operation executes, often far from the
-line that introduced the wrong shape, and only if that code path is
-run~\cite{numpy,pytorch}. A complementary line of work moves shapes into the type
-system so that mismatches are rejected statically. Dependently-typed languages
-express length-indexed vectors directly---for example Idris's $\mathtt{Vect}\ n\
-a$~\cite{idris}---and in Haskell the same effect is obtained with type-level
-naturals: the statically-sized interface of \texttt{hmatrix} and the
-\texttt{grenade} deep-learning library both index their tensors by
-dimension~\cite{hmatrix,grenade}. Our work sits in this second line but with a
-pedagogical aim: rather than providing a library, we build a complete
-classifier---forward and backward---on a minimal typed core, to show end to end
-how the guarantee is obtained.
+Work on shape safety for tensor programs spans a spectrum, from checks
+performed purely at runtime to checks performed statically, before the program
+ever runs. We survey this spectrum in order of increasing static guarantee,
+before turning, separately, to how gradients themselves are computed.
+
+\paragraph{Runtime shape verification.}
+At the dynamic end of the spectrum, shapes and dtypes are checked purely at
+runtime, through type annotations that a checker enforces as the program
+executes: jaxtyping and beartype-style checkers validate an array's declared
+shape and dtype against its actual value at each call~\cite{kidger2022jaxtyping}.
+The check remains dynamic---a mismatch still surfaces only when the annotated
+code runs---but it moves the error closer to its cause and reports a legible
+message in place of a shape exception raised deep inside an unrelated
+operation.
+
+\paragraph{External static analysis.}
+Moving a step toward static checking, a separate tool can analyze framework
+code before it runs at all: Pythia reconstructs a TensorFlow program's tensor
+shapes by static analysis of its operations~\cite{lagouvardos2020pythia}, and
+PyTea performs a comparable static analysis of PyTorch training code to flag
+shape errors ahead of execution~\cite{jhoo2021pytea}. Both catch many
+mismatches before the program runs, but as analyses external to the language,
+each is best-effort: unsound or incomplete in general, and separate from the
+type checker the programmer already relies on.
+
+\paragraph{Gradual typing in the language.}
+A further step brings shape information into the language's own type system,
+but only gradually. Variadic generics for Python, standardized as PEP 646, let
+a tensor's rank and axis sizes appear as type parameters that an ordinary
+static type checker can consult~\cite{pep646}, and shape-aware type checkers
+such as Pyrefly propagate and check these annotations across a
+codebase~\cite{pyrefly}. The checking is optional and partial: a program is
+verified only as far as its annotations reach, and unannotated code passes
+through unchecked.
+
+\paragraph{Static types with a dynamic escape hatch.}
+Further still, some array languages put sizes in the type system by default
+rather than by annotation, while retaining an explicit, controlled way to fall
+back to a runtime check. Futhark's size-dependent types track array dimensions
+statically but admit existential sizes and explicit runtime coercions where a
+size cannot be resolved at compile time~\cite{henriksen2021size}, refined
+further by subsequent work on shape-constrained array
+programming~\cite{bailly2023shape}; staged shape checking similarly defers a
+bounded set of shape obligations to a separate, still-static verification
+stage rather than to runtime~\cite{suwa2026staged}. These systems are static by
+default, with a narrow and explicit dynamic boundary rather than a pervasive
+one.
+
+\paragraph{Fully static in a dedicated language.}
+At the static end of the spectrum, Dex makes index sets and shapes part of the
+type system throughout: shapes are types, and a shape mismatch is rejected by
+the language's own type checking~\cite{paszke2021dex}. This is static by
+construction, but it is
+realized in a purpose-built array language, so using it means adopting a new
+language rather than extending an existing one.
+
+\paragraph{Static shapes in mainstream Haskell.}
+This work occupies the same static end of the spectrum, but realized inside a
+mainstream, general-purpose language rather than a dedicated array language.
+Type-level sizes are practical in GHC because of a line of foundational work:
+singletons give a systematic way to reflect between types and the values that
+witness them~\cite{eisenberg2012singletons}, Hasochism works out the
+interaction of dependently-typed style with ordinary Haskell type
+classes~\cite{lindley2013hasochism}, Naperian functors give a structured
+account of shaped, indexable containers~\cite{gibbons2017naperian}, and early
+work on statically typed linear algebra in Haskell demonstrates
+dimension-indexed matrices and vectors~\cite{eaton2006linalg}. Built on these
+foundations, typed neural-network libraries put shapes to work directly:
+Grenade indexes its layers by their input and output
+dimensions~\cite{campbell2016grenade}, TensorSafe checks that a declared
+network's layers compose to consistent shapes~\cite{pineyro2019tensorsafe,
+pineyro2021tensorsafe}, and Hasktorch gives libtorch tensors a shape-indexed
+Haskell type~\cite{hasktorch}. This work sits among them, and the differences
+are of degree rather than of concept. Hasktorch binds to libtorch, so its
+automatic differentiation is PyTorch's own reverse-mode engine reached through
+a foreign interface, not a backward pass implemented in Haskell---a different
+category of system, a binding to an industrial framework rather than an
+implementation of one. TensorSafe verifies the structure of a network and
+compiles the verified network to Keras or JavaScript; it does not itself run a
+forward or backward pass. Closest to this work is Grenade, a general-purpose
+library---supporting convolutions and LSTMs---built over hmatrix and
+BLAS~\cite{hmatrix}, which likewise verifies its backpropagation against finite
+differences. Two differences of degree remain: our finite-difference check is
+per-element, perturbing and checking each individual weight component so that
+an error localizes to a specific entry rather than to the layer as a whole;
+and our implementation depends on no linear-algebra library at all, so every
+operation, not only the shape discipline around it, stays legible in the
+artifact's own text.
 
 \paragraph{Automatic differentiation.}
-Gradients are usually computed automatically. Reverse-mode automatic
+Orthogonal to where shape checking happens is how gradients are computed:
+gradients are usually obtained automatically. Reverse-mode automatic
 differentiation underlies every mainstream framework, and functional accounts
 formulate it compositionally, most cleanly as a structure-preserving
 transformation of programs~\cite{elliott2018}. We deliberately do not use an
@@ -456,13 +552,10 @@ forward composition is.
 \paragraph{Correctness.}
 Writing backpropagation by hand invites sign errors and transposed-axis mistakes
 that the type checker cannot catch, since a wrong-but-well-shaped gradient still
-type-checks. We therefore verify the derivation numerically: for each weight we
-compare the analytical gradient against a central finite difference,
-\(\bigl(L(\theta + \varepsilon) - L(\theta - \varepsilon)\bigr) / 2\varepsilon\),
-both for a single layer and for the composed network. These checks are expressed
-as QuickCheck properties and hold over randomized inputs (\Cref{sec:results}), so
-the hand-written reverse pass is verified against the definition of the
-derivative rather than merely assumed correct.
+type-checks. We therefore verify the derivation numerically against finite
+differences, per-element rather than in aggregate, as a suite of QuickCheck
+properties that hold over randomized inputs; \Cref{sec:res:correct} reports the
+checks and the exact perturbation scheme.
 
 %% =============================================================================
 %% 5. Results
@@ -496,6 +589,9 @@ experiment.
     Test examples      & $10\,000$ (full test set) \\
     Epochs             & $25$ \\
     RNG seed           & $42$ \\
+    Environment        & GHC~9.4.8, \texttt{-O2}, boxed \texttt{Data.Vector} \\
+    % TODO: preencher com o wall time real do run de 25 épocas (ver results/training-log.md)
+    %Wall time          & {\raise0.5ex\hbox{$\sim$}}?~h (single core) \\
     \bottomrule
   \end{tabular}
 \end{table}
@@ -516,19 +612,33 @@ implementation with a property-based test suite: $16$ QuickCheck properties, eac
 run on $100$ randomized inputs, all passing. The properties cover the shaped
 linear algebra (transpose involution, matrix--vector product against a naive
 reference, outer-product elements), the activations and loss, and---most
-importantly---the backward passes. The weight-gradient properties for both a
-single layer and the composed network compare each analytical gradient against a
-central finite difference,
+importantly---the backward passes. Finite-difference checking of a hand-written
+or automatic backward pass is an established pattern in typed
+Haskell---Grenade verifies its own gradients the same
+way~\cite{campbell2016grenade}; our variant checks the gradients per-element
+rather than in aggregate. \texttt{prop\_layer\_backward\_dW} perturbs each
+individual weight entry \(W[i,j]\) of a single layer by \(\pm\varepsilon\) and
+compares the resulting central finite difference of the surrogate loss
+\(L = \mathrm{d}\mathbf{z}\cdot\mathbf{z}\) against the matching analytical
+gradient component \(\mathrm{d}W[i,j]\); \texttt{prop\_network\_backward\_fd}
+does the same for every hidden-weight entry \(W_1[i,j]\) of the composed
+two-layer network, propagating each perturbation through the full forward and
+backward pass against the surrogate loss
+\(L = \mathrm{d}\mathbf{z}_2\cdot\mathbf{z}_2\). Each comparison is a central
+finite difference,
 \(\bigl(L(\theta+\varepsilon) - L(\theta-\varepsilon)\bigr)/2\varepsilon\), so the
-hand-derived backpropagation of \Cref{sec:backprop} is checked against the
-definition of the derivative rather than assumed.
+hand-derived backpropagation of \Cref{sec:backprop} is checked, entry by entry,
+against the definition of the derivative rather than assumed. This per-element
+granularity is a deliberate design decision: checking one weight component at a
+time means a discrepancy localizes to that specific entry, rather than only
+confirming that some aggregate directional response is roughly correct.
 
 \subsection{Training and accuracy}
 \label{sec:res:training}
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{../fig-training.pdf}
+  \includegraphics[width=\columnwidth]{fig-training.pdf}
   \caption{Mean training loss (a) and test accuracy (b) per epoch over the
     $25$-epoch run. Epoch $0$ in (b) is the accuracy at initialization
     ($10.08\%$, near the $1/10$ chance rate); the network reaches its
@@ -558,7 +668,7 @@ competitive claim.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{../fig-confusion.pdf}
+  \includegraphics[width=\columnwidth]{fig-confusion.pdf}
   \caption{Confusion matrix on the full $10\,000$-image test set after $25$
     epochs (final accuracy $95.49\%$). Color encodes the row-normalized
     frequency; annotations are raw counts.}
@@ -623,8 +733,10 @@ without hiding the mathematics inside a framework.
 The scope of the work is deliberately narrow. The architecture is a single
 two-layer classifier trained with online SGD on MNIST, and the
 emphasis on type-level correctness comes at the cost of throughput: boxed vectors
-with no BLAS make a full run take minutes rather than seconds. These are
-boundaries of the demonstration, not of the technique. The natural next step is
+with no BLAS make a full $25$-epoch run over the $1.5$~million per-example steps
+take on the order of hours rather than the seconds a batched, BLAS-backed
+implementation would need. These are boundaries of the demonstration, not of the
+technique. The natural next step is
 to generalize the typed core from a fixed two-layer network to an arbitrary stack
 of layers---representing a network as a type-level list of dimensions and folding
 the forward and backward passes over it---so that networks of any depth inherit

@@ -1,7 +1,11 @@
-% references.bib — haskell-mnist paper
-% ALL entries below point to real, well-known works, but the bibliographic
-% details (pages, volumes, years, editors) were written from memory and MUST be
-% verified against the original sources / DBLP before submission.
+% references.bib -- haskell-mnist
+% Entradas VERIFICADAS contra a fonte primaria (DBLP / ACM DL / DROPS / arXiv).
+% Onde ha "TODO_VERIFY", o campo nao pode ser confirmado nesta revisao.
+% Estilo alvo: \bibliographystyle{ACM-Reference-Format}
+
+% =====================================================================
+% 0. FONTES DE BASE (dataset, features de linguagem, frameworks citados)
+% =====================================================================
 
 @misc{lecun-mnist,
   author       = {LeCun, Yann and Cortes, Corinna and Burges, Christopher J.C.},
@@ -21,28 +25,11 @@
   publisher = {ACM}
 }
 
-@article{idris,
-  author  = {Brady, Edwin},
-  title   = {Idris, a general-purpose dependently typed programming language:
-             Design and implementation},
-  journal = {Journal of Functional Programming},
-  volume  = {23},
-  number  = {5},
-  year    = {2013}
-}
-
 @misc{hmatrix,
   author       = {Ruiz, Alberto},
   title        = {hmatrix: Numeric linear algebra for {Haskell}
                   (statically sized interface)},
   howpublished = {\url{https://hackage.haskell.org/package/hmatrix}},
-  note         = {Accessed 2026}
-}
-
-@misc{grenade,
-  author       = {Campbell, Huw},
-  title        = {Grenade: Practical deep learning in {Haskell}},
-  howpublished = {\url{https://github.com/HuwCampbell/grenade}},
   note         = {Accessed 2026}
 }
 
@@ -71,4 +58,215 @@
   volume  = {2},
   number  = {ICFP},
   year    = {2018}
+}
+
+% =====================================================================
+% 1. MOTIVACAO EMPIRICA: erros de shape sao prevalentes
+% =====================================================================
+
+@inproceedings{zhang2018empirical,
+  author    = {Zhang, Yuhao and Chen, Yifan and Cheung, Shing-Chi and Xiong, Yingfei and Zhang, Lu},
+  title     = {An Empirical Study on {TensorFlow} Program Bugs},
+  booktitle = {Proceedings of the 27th ACM SIGSOFT International Symposium on Software Testing and Analysis (ISSTA 2018)},
+  pages     = {129--140},
+  year      = {2018},
+  publisher = {ACM},
+  doi       = {10.1145/3213846.3213866}
+}
+
+% =====================================================================
+% 2. SHAPES NO SISTEMA DE TIPOS DO HASKELL (a linhagem direta do trabalho)
+% =====================================================================
+
+@inproceedings{eisenberg2012singletons,
+  author    = {Eisenberg, Richard A. and Weirich, Stephanie},
+  title     = {Dependently Typed Programming with Singletons},
+  booktitle = {Proceedings of the 2012 ACM SIGPLAN Haskell Symposium (Haskell '12)},
+  year      = {2012},
+  publisher = {ACM},
+  pages     = {117--130},           % verificado: ACM DL / SIGPLAN Notices 47(12), 2012
+  doi       = {10.1145/2364506.2364522}
+}
+
+@inproceedings{lindley2013hasochism,
+  author    = {Lindley, Sam and McBride, Conor},
+  title     = {Hasochism: The Pleasure and Pain of Dependently Typed {Haskell} Programming},
+  booktitle = {Proceedings of the 2013 ACM SIGPLAN Symposium on Haskell (Haskell '13)},
+  pages     = {81--92},
+  year      = {2013},
+  publisher = {ACM},
+  doi       = {10.1145/2503778.2503786}
+}
+
+@inproceedings{eaton2006linalg,
+  author    = {Eaton, Frederik},
+  title     = {Statically Typed Linear Algebra in {Haskell}},
+  booktitle = {Proceedings of the 2006 ACM SIGPLAN Workshop on Haskell},
+  pages     = {120--121},
+  year      = {2006},
+  publisher = {ACM},
+  doi       = {10.1145/1159842.1159859}
+}
+
+@inproceedings{gibbons2017naperian,
+  author    = {Gibbons, Jeremy},
+  title     = {{APL}icative Programming with {Naperian} Functors},
+  booktitle = {Programming Languages and Systems -- 26th European Symposium on Programming (ESOP 2017)},
+  series    = {Lecture Notes in Computer Science},
+  volume    = {10201},
+  pages     = {556--583},
+  year      = {2017},
+  publisher = {Springer},
+  doi       = {10.1007/978-3-662-54434-1_21}
+}
+
+% =====================================================================
+% 3. REDES NEURAIS TIPADAS EM HASKELL (a prior art mais proxima)
+% =====================================================================
+
+@inproceedings{pineyro2019tensorsafe,
+  author    = {Pi{\~n}eyro, Leonardo and Pardo, Alberto and Viera, Marcos},
+  title     = {Structure Verification of Deep Neural Networks at Compilation Time Using Dependent Types},
+  booktitle = {Proceedings of the XXIII Brazilian Symposium on Programming Languages (SBLP 2019)},
+  year      = {2019},
+  publisher = {ACM},
+  doi       = {10.1145/3355378.3355379}
+}
+
+@article{pineyro2021tensorsafe,
+  author  = {Pi{\~n}eyro, Leonardo and Pardo, Alberto and Viera, Marcos},
+  title   = {Structure Verification of Deep Neural Networks at Compilation Time},
+  journal = {Journal of Computer Languages},
+  year    = {2021},
+  volume  = {TODO_VERIFY},          % TODO_VERIFY: volume, numero e paginas
+  note    = {Extensao do artigo SBLP 2019}
+}
+
+@misc{campbell2016grenade,
+  author       = {Campbell, Huw},
+  title        = {Grenade: Deep Learning in {Haskell} with Dependent Types},
+  howpublished = {\url{https://github.com/HuwCampbell/grenade}},
+  year         = {2016},
+  note         = {Acessado em TODO_VERIFY}
+}
+
+@misc{hasktorch,
+  author       = {{Hasktorch Contributors}},
+  title        = {Hasktorch: Tensors and Neural Networks in {Haskell}},
+  howpublished = {\url{https://github.com/hasktorch/hasktorch}},
+  note         = {Acessado em TODO_VERIFY}
+}
+
+% =====================================================================
+% 4. LINGUAGENS DE ARRAY COM INDICES/TAMANHOS TIPADOS
+% =====================================================================
+
+@article{paszke2021dex,
+  author    = {Paszke, Adam and Johnson, Daniel D. and Duvenaud, David and Vytiniotis, Dimitrios
+               and Radul, Alexey and Johnson, Matthew J. and Ragan-Kelley, Jonathan and Maclaurin, Dougal},
+  title     = {Getting to the Point: Index Sets and Parallelism-Preserving Autodiff for Pointful Array Programming},
+  journal   = {Proceedings of the ACM on Programming Languages},
+  volume    = {5},
+  number    = {ICFP},
+  articleno = {88},
+  numpages  = {29},
+  year      = {2021},
+  doi       = {10.1145/3473593}
+}
+
+@inproceedings{henriksen2021size,
+  author    = {Henriksen, Troels and Elsman, Martin},
+  title     = {Towards Size-Dependent Types for Array Programming},
+  booktitle = {Proceedings of the 7th ACM SIGPLAN International Workshop on Libraries, Languages
+               and Compilers for Array Programming (ARRAY 2021)},
+  pages     = {1--14},
+  year      = {2021},
+  publisher = {ACM},
+  doi       = {10.1145/3460944.3464310}
+}
+
+@inproceedings{bailly2023shape,
+  author    = {Bailly, Lubin and Henriksen, Troels and Elsman, Martin},
+  title     = {Shape-Constrained Array Programming with Size-Dependent Types},
+  booktitle = {Proceedings of the 11th ACM SIGPLAN International Workshop on Functional
+               High-Performance and Numerical Computing (FHPNC 2023)},
+  year      = {2023},
+  publisher = {ACM},
+  doi       = {10.1145/3609024.3609412}
+}
+
+% =====================================================================
+% 5. VERIFICACAO ESTAGIADA / DEPENDENTE FORA DO HASKELL
+% =====================================================================
+
+@inproceedings{suwa2026staged,
+  author    = {Suwa, Takashi and Igarashi, Atsushi},
+  title     = {Compile-Time Tensor Shape Checking via Staged Shape-Dependent Types},
+  booktitle = {40th European Conference on Object-Oriented Programming (ECOOP 2026)},
+  series    = {Leibniz International Proceedings in Informatics (LIPIcs)},
+  year      = {2026},
+  publisher = {Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r Informatik},
+  pages     = {TODO_VERIFY},        % TODO_VERIFY: numero do artigo e paginacao LIPIcs
+  note      = {Versao longa: \url{https://arxiv.org/abs/2604.23807}}
+}
+
+@inproceedings{eremondi2023graten,
+  author    = {Sekiyama, Taro and Igarashi, Atsushi},
+  title     = {Gradual Tensor Shape Checking},
+  booktitle = {Programming Languages and Systems -- 32nd European Symposium on Programming (ESOP 2023)},
+  year      = {2023},
+  publisher = {Springer},
+  doi       = {10.1007/978-3-031-30044-8_8},
+  note      = {TODO_VERIFY: confirmar lista completa de autores em arXiv:2203.08402}
+}
+
+% =====================================================================
+% 6. O MUNDO PYTHON: gradual, runtime e analise estatica
+% =====================================================================
+
+@misc{pep646,
+  author       = {Mendoza, Mark and Rahtz, Matthew and Srinivasan, Pradeep Kumar and Siles, Vincent},
+  title        = {{PEP} 646 -- Variadic Generics},
+  howpublished = {\url{https://peps.python.org/pep-0646/}},
+  year         = {2020},
+  note         = {Aceito para Python 3.11}
+}
+
+@misc{kidger2022jaxtyping,
+  author       = {Kidger, Patrick},
+  title        = {jaxtyping: Type Annotations and Runtime Checking for Shape and Dtype of
+                  {JAX}/{NumPy}/{PyTorch} Arrays},
+  howpublished = {\url{https://github.com/patrick-kidger/jaxtyping}},
+  year         = {2022},
+  note         = {Acessado em TODO_VERIFY}
+}
+
+@inproceedings{lagouvardos2020pythia,
+  author    = {Lagouvardos, Sifis and Dolby, Julian and Grech, Neville and Antoniadis, Anastasios
+               and Smaragdakis, Yannis},
+  title     = {Static Analysis of Shape in {TensorFlow} Programs},
+  booktitle = {34th European Conference on Object-Oriented Programming (ECOOP 2020)},
+  series    = {Leibniz International Proceedings in Informatics (LIPIcs)},
+  volume    = {166},
+  pages     = {15:1--15:29},
+  year      = {2020},
+  publisher = {Schloss Dagstuhl -- Leibniz-Zentrum f{\"u}r Informatik},
+  doi       = {10.4230/LIPIcs.ECOOP.2020.15}
+}
+
+@misc{jhoo2021pytea,
+  author        = {Jhoo, Ho Young and Kim, Sehoon and Song, Woosung and Park, Kyuyeon
+                   and Lee, DongKwon and Yi, Kwangkeun},
+  title         = {A Static Analyzer for Detecting Tensor Shape Errors in Deep Neural Network Training Code},
+  year          = {2021},
+  eprint        = {2112.09037},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.PL}
+}
+
+@misc{pyrefly,
+  author       = {{Pyrefly Team}},
+  title        = {Tensor Shapes -- {Pyrefly} Documentation},
+  howpublished = {\url{https://pyrefly.org/en/docs/tensor-shapes/}},
+  note         = {Acessado em TODO_VERIFY}
 }
