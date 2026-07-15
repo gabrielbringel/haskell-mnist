@@ -87,6 +87,10 @@ stack test                        # run the QuickCheck property suite
 stack exec haskell-mnist-train    # train on MNIST, print per-epoch accuracy
 ```
 
+The executable prints the mean loss and test accuracy after each epoch, then
+prints the final confusion matrix and writes it to
+[`results/confusion-matrix.csv`](results/confusion-matrix.csv).
+
 Hyperparameters are top-level constants at the top of `app/Main.hs`
 (`learningRate`, `epochs`, `trainSize`, `testSize`, `seed`) — edit and rebuild
 to reproduce or extend the runs.
