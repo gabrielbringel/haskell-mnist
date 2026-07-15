@@ -113,6 +113,16 @@ the accuracy oscillates from step to step as expected for online SGD with a
 fixed learning rate. See [`results/training-log.md`](results/training-log.md)
 for the full per-epoch log and the confusion-matrix error analysis.
 
+### Reproducing the figures
+
+The training curves and confusion-matrix plots in `paper/` are generated from
+the CSVs in `results/` by [`scripts/plot_results.py`](scripts/plot_results.py):
+
+```sh
+pip install -r requirements.txt        # matplotlib, numpy, pandas
+python scripts/plot_results.py         # writes results/fig-training.pdf and fig-confusion.pdf
+```
+
 ## Testing
 
 `stack test` runs 16 QuickCheck properties (100 cases each) covering the linear
