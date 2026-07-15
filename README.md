@@ -137,7 +137,8 @@ just assumed.
 - Matrices and vectors are boxed `Data.Vector`s with no BLAS, so a full run of
   the defaults takes a few minutes; the emphasis here is on type-level
   correctness, not throughput.
-- `paper/` contains the LaTeX write-up (`main.tex`, `references.bib`).
+- `paper/` contains the LaTeX write-up (`main.tex`, `references.bib`), which
+  embeds the figures produced by `scripts/plot_results.py`.
 
 ## License
 
