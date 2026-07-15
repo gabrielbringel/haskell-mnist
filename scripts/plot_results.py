@@ -21,14 +21,17 @@ import sys
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from matplotlib.ticker import MaxNLocator
 
 RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
 
 # Shared style — sizes that stay legible in a paper column.
 plt.rcParams.update({
     "font.size": 9,
-    "axes.titlesize": 10,
-    "axes.labelsize": 9,
+    "axes.titlesize": 11,
+    "axes.labelsize": 10,
+    "axes.labelweight": "bold",
+    "axes.titlepad": 14,
     "legend.fontsize": 8,
     "xtick.labelsize": 8,
     "ytick.labelsize": 8,
@@ -37,8 +40,11 @@ plt.rcParams.update({
     # "font.family": "serif",
 })
 
-# Single curve for the full run; solid line with a small marker.
-LINE = dict(color="#7570b3", marker="o", markersize=3, linestyle="-")
+# Single curve per panel; solid line with a marker on every epoch.
+LINE_LOSS = dict(color="#d6942a", marker="o", markersize=2.5, linewidth=1.3,
+                  linestyle="-")
+LINE_ACC = dict(color="#2a78d6", marker="o", markersize=2.5, linewidth=1.3,
+                 linestyle="-")
 
 
 def confusion_figure():
@@ -103,6 +109,20 @@ def main():
     confusion_figure()
 
 
+def style_axes(ax):
+    """Applies the shared line-plot style to `ax`: horizontal-only grid drawn
+    behind the data and no top/right spines.
+    """
+    ax.grid(True, axis="y", color="#d9d9d6", linewidth=0.8)
+    ax.set_axisbelow(True)
+    ax.yaxis.set_major_locator(MaxNLocator(nbins=8, steps=[1, 2, 5, 10]))
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_linewidth(0.8)
+    ax.tick_params(width=0.8, labelsize=8)
+
+
 def training_figure():
     """Writes results/fig-training.pdf: mean training loss and test accuracy
     per epoch, as two vertically stacked panels read from
@@ -113,31 +133,36 @@ def training_figure():
 
     # Vertically stacked panels: (a) loss on top, (b) accuracy below.
     # A narrow, tall figure fits one column of the ACM template.
-    fig, (ax_loss, ax_acc) = plt.subplots(2, 1, figsize=(3.4, 4.8))
+    fig, (ax_loss, ax_acc) = plt.subplots(2, 1, figsize=(3.0, 4.2))
 
     loss = df.dropna(subset=["loss"])            # no loss at epoch 0
-    ax_loss.plot(loss["epoch"], loss["loss"], **LINE)
-    ax_acc.plot(df["epoch"], df["accuracy"], **LINE)
+    ax_loss.plot(loss["epoch"], loss["loss"], **LINE_LOSS)
+    ax_acc.plot(df["epoch"], df["accuracy"], **LINE_ACC)
 
     ax_loss.set_title("(a) Mean training loss")
-    ax_loss.set_xlabel("epoch", fontweight="bold")
-    ax_loss.set_ylabel("cross-entropy loss", fontweight="bold")
+    ax_loss.set_xlabel("Training step")
+    ax_loss.set_ylabel("Cross-entropy loss")
 
     ax_acc.set_title("(b) Test accuracy")
-    ax_acc.set_xlabel("epoch", fontweight="bold")
-    ax_acc.set_ylabel("accuracy (%)", fontweight="bold")
+    ax_acc.set_xlabel("Training step")
+    ax_acc.set_ylabel("Accuracy (%)")
 
-    # Limits derived from the data; ticks every 5 epochs to avoid crowding.
+    # Shared x-range for both panels: 0 to 25 in steps of 5, no padding.
     max_epoch = int(df["epoch"].max())
     ticks = range(0, max_epoch + 1, 5)
-    # Loss starts at epoch 1 (epoch 0 has none); accuracy includes epoch 0.
-    ax_loss.set_xlim(0.5, max_epoch + 0.5)
-    ax_acc.set_xlim(-0.5, max_epoch + 0.5)
     for ax in (ax_loss, ax_acc):
+        ax.set_xlim(0, max_epoch + 1)
         ax.set_xticks(ticks)
-        ax.grid(True, alpha=0.3)
+        ax.tick_params(axis="x", rotation=45)
+        style_axes(ax)
 
-    fig.tight_layout()
+    ax_loss.set_ylim(0.15, 0.35)
+    ax_loss.set_yticks(np.arange(0.00, 0.42, 0.10))
+
+    ax_acc.set_ylim(90, 98)
+    ax_acc.set_yticks(range(90, 99, 2))
+
+    fig.tight_layout(h_pad=3.0)
     out = os.path.join(RESULTS_DIR, "fig-training.pdf")
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
