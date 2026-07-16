@@ -140,11 +140,11 @@ def training_figure():
     ax_acc.plot(df["epoch"], df["accuracy"], **LINE_ACC)
 
     ax_loss.set_title("(a) Mean training loss")
-    ax_loss.set_xlabel("Training step")
+    ax_loss.set_xlabel("Epoch")
     ax_loss.set_ylabel("Cross-entropy loss")
 
     ax_acc.set_title("(b) Test accuracy")
-    ax_acc.set_xlabel("Training step")
+    ax_acc.set_xlabel("Epoch")
     ax_acc.set_ylabel("Accuracy (%)")
 
     # Shared x-range for both panels: 0 to 25 in steps of 5, no padding.
