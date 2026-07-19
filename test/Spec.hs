@@ -33,6 +33,7 @@ main = do
     , quickCheckResult prop_relu_nonneg
     , quickCheckResult prop_relu_deriv
     , quickCheckResult prop_crossentropy_nonneg
+    , quickCheckResult prop_crossentropy_grad_fd
     , quickCheckResult prop_layer_forward_linear
     , quickCheckResult prop_layer_backward_dW
     , quickCheckResult prop_layer_backward_dB
@@ -81,6 +82,28 @@ prop_crossentropy_nonneg logits i = Loss.crossEntropy yhat y >= 0
     yhat = Activation.softmax logits
     k    = i `mod` 10
     y    = Vec.generate (\j -> if j == k then 1.0 else 0.0) :: Vec 10 Double
+
+-- | The gradient of cross-entropy w.r.t. logits (before softmax) agrees with
+-- central finite differences of @crossEntropy . softmax@. Logits are compressed
+-- to a bounded band to prevent softmax underflow.
+prop_crossentropy_grad_fd :: Vec 10 Double -> Int -> Bool
+prop_crossentropy_grad_fd rawLogits i =
+    and [ close (Vec.vindex grad k) (numerical k) | k <- [0 .. 9] ]
+  where
+    logits = Vec.vmap (\x -> 4 * tanh (x / 4)) rawLogits
+    kIdx   = i `mod` 10
+    y      = Vec.generate (\j -> if j == kIdx then 1.0 else 0.0) :: Vec 10 Double
+    grad   = Loss.crossEntropyGrad (Activation.softmax logits) y
+    eps    = 1e-6
+    close a n = abs (a - n) < 1e-4 * (1 + abs a) + 1e-3
+    lossAt v = Loss.crossEntropy (Activation.softmax v) y
+    numerical k =
+      let perturb sign =
+            Vec.generate (\j ->
+              if j == k
+              then Vec.vindex logits k + sign * eps
+              else Vec.vindex logits j)
+      in (lossAt (perturb 1) - lossAt (perturb (-1))) / (2 * eps)
 
 -- | The dot product is commutative (exactly, since IEEE multiplication is
 -- commutative and the summation order is identical).
@@ -149,12 +172,19 @@ prop_mulV_naive m v = Vec.toList (Mat.mulV m v) == naive
       [ foldl' (+) 0 (zipWith (*) (Vec.toList (Mat.mrow m i)) (Vec.toList v))
       | i <- [0 .. 3] ]
 
--- | The network backward pass agrees with finite differences: perturb each
--- weight in the hidden layer by +/- eps, compute the change in a scalar loss
--- (dZ₂ · z₂), and compare to the analytical gradient component.
-prop_network_backward_fd :: Mat 3 4 Double -> Mat 2 3 Double -> Vec 4 Double -> Vec 2 Double -> Bool
-prop_network_backward_fd w1 w2 x dZ2 = and [ close (Mat.mindex dW1 i j) (numerical i j)
-                                              | i <- [0 .. 2], j <- [0 .. 3] ]
+-- | The network backward pass agrees with finite differences at differentiable
+-- points: perturb each weight in the hidden layer by +/- eps, compute the
+-- change in a scalar loss (dZ₂ · z₂), and compare to the analytical gradient
+-- component. Cases at the ReLU kink are discarded because a central difference
+-- across zero is not comparable to the implementation's convention relu'(0)=0.
+prop_network_backward_fd :: Mat 3 4 Double -> Mat 2 3 Double -> Vec 4 Double -> Vec 2 Double -> Property
+prop_network_backward_fd w1 w2 x dZ2 =
+  differentiable ==>
+    conjoin
+      [ counterexample ("hidden weight " ++ show (i, j))
+          (close (Mat.mindex dW1 i j) (numerical i j))
+      | i <- [0 .. 2], j <- [0 .. 3]
+      ]
   where
     bias1 = Vec.replicate 0 :: Vec 3 Double
     bias2 = Vec.replicate 0 :: Vec 2 Double
@@ -166,6 +196,8 @@ prop_network_backward_fd w1 w2 x dZ2 = and [ close (Mat.mindex dW1 i j) (numeric
     (dW1, _, _, _, _) = Network.networkBackward net x z1 a1 dZ2
     close a n = abs (a - n) < 1e-4 * (1 + abs a) + 1e-3
     eps = 1e-6
+    maxInput = maximum (1 : map abs (Vec.toList x))
+    differentiable = all ((> eps * maxInput) . abs) (Vec.toList z1)
     netAt w1' = Network.Network
       { Network.hidden = Layer.Layer w1' bias1
       , Network.output = Layer.Layer w2 bias2

@@ -3,7 +3,7 @@
 -- at runtime. The invariant @length internalVector == n@ is preserved by every
 -- smart constructor below.
 module Vec
-  ( Vec(..)
+  ( Vec
   , dot
   , fromList
   , generate

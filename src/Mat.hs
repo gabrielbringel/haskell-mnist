@@ -10,7 +10,7 @@
 --   * @'mulV' ('transpose' w) delta@ — propagate the gradient backwards
 --   * @'outer' delta x@ — gradient of the weights (same shape as @w@)
 module Mat
-  ( Mat(..)
+  ( Mat
   , madd
   , mcols
   , mfromList
@@ -31,7 +31,7 @@ import           Data.Vector  (Vector)
 import qualified Data.Vector  as V
 import           GHC.TypeNats (KnownNat, Nat, natVal)
 
-import           Vec          (Vec (..), dot, generate, vindex)
+import           Vec          (Vec, dot, generate, vindex)
 
 -- | An @r@-by-@c@ matrix of elements of type @a@, stored row-major.
 newtype Mat (r :: Nat) (c :: Nat) a = Mat (Vector a)
@@ -74,9 +74,7 @@ mreplicate x = Mat (V.replicate (r * c) x)
 
 -- | Extract row @i@ as a 'Vec'.
 mrow :: forall r c a. (KnownNat r, KnownNat c) => Mat r c a -> Int -> Vec c a
-mrow m@(Mat v) i = Vec (V.slice (i * c) c v)
-  where
-    c = mcols m
+mrow m i = generate (\j -> mindex m i j)
 
 -- | Number of rows, recovered from the type.
 mrows :: forall r c a. KnownNat r => Mat r c a -> Int
