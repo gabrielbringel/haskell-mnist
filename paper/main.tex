@@ -378,7 +378,11 @@ stored row-major, with element \((i, j)\) at flat index \(i\,c + j\). The
 type-level index is a phantom: it constrains the type without appearing in the
 runtime representation, so a shaped tensor is exactly as compact as the
 underlying vector. Crucially, the \texttt{Vec} and \texttt{Mat} constructors are
-not exported; values can be constructed only through \emph{smart constructors}---\texttt{generate}, \texttt{replicate}, \texttt{fromList} for \texttt{Vec}, and \texttt{mgenerate}, \texttt{mreplicate}, \texttt{mfromList} for \texttt{Mat}---each of which establishes and verifies the size invariant. This abstraction guarantees that a well-typed value of \texttt{Vec}~\(n\) or \texttt{Mat}~\(r\)~\(c\) cannot store the wrong number of elements: there is no form to construct them incorrectly. Two of these constructors, \texttt{fromList} and \texttt{mfromList}, are the boundary-facing pair: they build a shaped value from a plain list whose length is not statically known, so they return \texttt{Maybe} rather than assuming success. This is precisely where the type-level guarantee meets untrusted external data---for instance, the MNIST loader turns each image's raw byte payload into a \texttt{Vec 784} through \texttt{fromList}, so a malformed file yields \texttt{Nothing} at the boundary instead of a silently mis-sized vector. The operation that makes these types earn their keep is the
+not exported; values can be constructed only through \emph{smart constructors}---\texttt{generate}, \texttt{replicate}, \texttt{fromList} for \texttt{Vec}, and \texttt{mgenerate}, \texttt{mreplicate}, \texttt{mfromList} for \texttt{Mat}---each of which establishes and verifies the size invariant. This abstraction guarantees that a well-typed value of \texttt{Vec}~\(n\) or \texttt{Mat}~\(r\)~\(c\) cannot store the wrong number of elements: there is no form to construct them incorrectly.
+
+Two of these constructors, \texttt{fromList} and \texttt{mfromList}, are the boundary-facing pair: they build a shaped value from a plain list whose length is not statically known, so they return \texttt{Maybe} rather than assuming success. This is precisely where the type-level guarantee meets untrusted external data---for instance, the MNIST loader turns each image's raw byte payload into a \texttt{Vec 784} through \texttt{fromList}, so a malformed file yields \texttt{Nothing} at the boundary instead of a silently mis-sized vector.
+
+The operation that makes these types earn their keep is the
 matrix--vector product,
 \[
   \mathtt{mulV} :: (\mathtt{KnownNat}\ r,\ \mathtt{KnownNat}\ c)
@@ -625,10 +629,17 @@ and loss, linear layers, full network composition, and evaluation metrics.
 \begin{table*}[t]
   \centering
   \caption{The 17 QuickCheck properties. Each runs on $100$ randomized inputs
-    (or $100$ cases with automatic discard). Test networks use reduced dimensions:
-    $4 \to 3 \to 2$ (cf.\ \Cref{sec:res:limits}). All entries are verified
-    component-by-component where applicable. Finite-difference tests use central
-    differences with step $\varepsilon = 10^{-6}$; see text for tolerance formulas.}
+    (or $100$ cases with automatic discard). Dimensions vary by property, chosen
+    for tractable enumeration rather than shared across the whole suite: the
+    network- and confusion-matrix-level properties use a reduced $4 \to 3 \to 2$
+    instance of the architecture (cf.\ \Cref{sec:res:limits}), the single-layer
+    properties use an independent reduced $3 \to 4$ layer, the loss properties
+    run at the true $10$-class output size, and the remaining linear-algebra
+    properties use other small, arbitrary-sized instances (see
+    \Cref{sec:res:correct} for exact shapes). All entries are verified
+    component-by-component where applicable.
+    Finite-difference tests use central differences with step
+    $\varepsilon = 10^{-6}$; see text for tolerance formulas.}
   \label{tab:properties}
   \begin{tabular}{l l}
     \toprule
