@@ -750,9 +750,9 @@ above where needed. The finite-difference step size is $\varepsilon = 10^{-6}$.
 Two scale-aware comparison tolerances are used:
 \begin{itemize}
   \item \texttt{prop\_softmax\_crossentropy\_grad\_fd} and
-    \texttt{prop\_layer\_backward\_dW}:
+    \texttt{prop\_layer\_backward\_dW}:\\
     $|a - n| < 10^{-4}(1 + |a|) + 10^{-3}$;
-  \item \texttt{prop\_network\_backward\_fd}:
+  \item \texttt{prop\_network\_backward\_fd}:\\
     $|a - n| \le 10^{-6} + 10^{-4} \cdot \max(|a|, |n|)$.
 \end{itemize}
 These tolerances account for floating-point rounding at the different numerical
