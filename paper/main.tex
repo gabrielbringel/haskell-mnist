@@ -839,10 +839,15 @@ instances of the main architecture (4 inputs, 3 hidden, 2 outputs) for tractable
 property enumeration. All code, results, and experiment logs are archived in a public
 GitHub repository: \url{https://github.com/gabrielbringel/haskell-mnist}. The MNIST
 dataset~\cite{lecun-mnist} must be obtained separately: download the four IDX-format
-files (\texttt{train-images-idx3-ubyte}, \texttt{train-labels-idx1-ubyte},
-\texttt{t10k-images-idx3-ubyte}, \texttt{t10k-labels-idx1-ubyte}) from the MNIST
-archive, decompress them with \texttt{gunzip} if necessary, and place them in a
-\texttt{data/} directory; the loader validates the IDX magic numbers (2051 for
+files below from the MNIST archive, decompress them with \texttt{gunzip} if
+necessary, and place them in a \texttt{data/} directory:
+\begin{itemize}
+  \item \texttt{train-images-idx3-ubyte}
+  \item \texttt{train-labels-idx1-ubyte}
+  \item \texttt{t10k-images-idx3-ubyte}
+  \item \texttt{t10k-labels-idx1-ubyte}
+\end{itemize}
+The loader validates the IDX magic numbers (2051 for
 images, 2049 for labels) and confirms each image is 28~$\times$~28 pixels. Exact
 SHA-256 checksums of the four uncompressed files used for the reported run are
 recorded in \texttt{results/run-manifest.json} and checked by
