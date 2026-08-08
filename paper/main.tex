@@ -385,8 +385,10 @@ Two of these constructors, \texttt{fromList} and \texttt{mfromList}, are the bou
 The operation that makes these types earn their keep is the
 matrix--vector product,
 \[
-  \mathtt{mulV} :: (\mathtt{KnownNat}\ r,\ \mathtt{KnownNat}\ c)
-  \Rightarrow \mathtt{Mat}\ r\ c\ a \to \mathtt{Vec}\ c\ a \to \mathtt{Vec}\ r\ a.
+  \begin{aligned}
+    \mathtt{mulV} &:: (\mathtt{KnownNat}\ r,\ \mathtt{KnownNat}\ c) \\
+      &\Rightarrow \mathtt{Mat}\ r\ c\ a \to \mathtt{Vec}\ c\ a \to \mathtt{Vec}\ r\ a.
+  \end{aligned}
 \]
 The column count of the matrix and the length of the vector are the same type
 variable \(c\), and the result has length \(r\). There is therefore no
@@ -746,12 +748,13 @@ uniformly sampled from $\{0,1\}$. The other properties use QuickCheck's standard
 \texttt{Arbitrary} generators, with the explicit logit compression described
 above where needed. The finite-difference step size is $\varepsilon = 10^{-6}$.
 Two scale-aware comparison tolerances are used:
-\begin{align}
-  \texttt{prop\_softmax\_crossentropy\_grad\_fd}, \texttt{prop\_layer\_backward\_dW}:
-    \quad &|a - n| < 10^{-4}(1 + |a|) + 10^{-3}, \\
-  \texttt{prop\_network\_backward\_fd}: \quad
-    &|a - n| \le 10^{-6} + 10^{-4} \cdot \max(|a|, |n|).
-\end{align}
+\begin{itemize}
+  \item \texttt{prop\_softmax\_crossentropy\_grad\_fd} and
+    \texttt{prop\_layer\_backward\_dW}:
+    $|a - n| < 10^{-4}(1 + |a|) + 10^{-3}$;
+  \item \texttt{prop\_network\_backward\_fd}:
+    $|a - n| \le 10^{-6} + 10^{-4} \cdot \max(|a|, |n|)$.
+\end{itemize}
 These tolerances account for floating-point rounding at the different numerical
 scales exercised by the two generator regimes. The default suite uses $100$
 successful cases per property; setting \texttt{QC\_CASES=1000} runs the recorded
@@ -762,7 +765,7 @@ stress configuration.
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\columnwidth]{fig-training.pdf}
+  \includegraphics[width=0.75\columnwidth]{fig-training.pdf}
   \caption{Mean training loss (a) and test accuracy (b) per epoch over the
     $25$-epoch run. The accuracy before training (epoch $0$) was $10.08\%$,
     near the $1/10$ chance rate, but is not represented in panel (b), which is
