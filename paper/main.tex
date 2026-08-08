@@ -378,7 +378,7 @@ stored row-major, with element \((i, j)\) at flat index \(i\,c + j\). The
 type-level index is a phantom: it constrains the type without appearing in the
 runtime representation, so a shaped tensor is exactly as compact as the
 underlying vector. Crucially, the \texttt{Vec} and \texttt{Mat} constructors are
-not exported; values can be constructed only through \emph{smart constructors}---\texttt{generate}, \texttt{replicate}, \texttt{fromList} for \texttt{Vec}, and \texttt{mgenerate}, \texttt{mreplicate}, \texttt{mfromList} for \texttt{Mat}---each of which establishes and verifies the size invariant. This abstraction guarantees that a well-typed value of \texttt{Vec}~\(n\) or \texttt{Mat}~\(r\)~\(c\) cannot store the wrong number of elements: there is no form to construct them incorrectly. The operation that makes these types earn their keep is the
+not exported; values can be constructed only through \emph{smart constructors}---\texttt{generate}, \texttt{replicate}, \texttt{fromList} for \texttt{Vec}, and \texttt{mgenerate}, \texttt{mreplicate}, \texttt{mfromList} for \texttt{Mat}---each of which establishes and verifies the size invariant. This abstraction guarantees that a well-typed value of \texttt{Vec}~\(n\) or \texttt{Mat}~\(r\)~\(c\) cannot store the wrong number of elements: there is no form to construct them incorrectly. Two of these constructors, \texttt{fromList} and \texttt{mfromList}, are the boundary-facing pair: they build a shaped value from a plain list whose length is not statically known, so they return \texttt{Maybe} rather than assuming success. This is precisely where the type-level guarantee meets untrusted external data---for instance, the MNIST loader turns each image's raw byte payload into a \texttt{Vec 784} through \texttt{fromList}, so a malformed file yields \texttt{Nothing} at the boundary instead of a silently mis-sized vector. The operation that makes these types earn their keep is the
 matrix--vector product,
 \[
   \mathtt{mulV} :: (\mathtt{KnownNat}\ r,\ \mathtt{KnownNat}\ c)
@@ -697,7 +697,8 @@ range while exercising the actual, uncompressed softmax implementation.
 
 \paragraph{Gradient properties: layer and network.}
 \texttt{prop\_layer\_backward\_dW} verifies each individual weight entry $W[i,j]$ of
-a single layer against the surrogate loss $L = \mathrm{d}\mathbf{z} \cdot \mathbf{z}$.
+a single reduced $3 \to 4$ layer (weight matrix \texttt{Mat 4 3}) against the
+surrogate loss $L = \mathrm{d}\mathbf{z} \cdot \mathbf{z}$.
 \texttt{prop\_network\_backward\_fd} extends this to the full two-layer network and
 verifies every element of the four parameter tensors ($W_1, \mathbf{b}_1, W_2, \mathbf{b}_2$):
 \begin{itemize}
