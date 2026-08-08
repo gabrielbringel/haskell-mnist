@@ -20,6 +20,8 @@ import sys
 
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
@@ -58,7 +60,7 @@ def confusion_figure():
     if not os.path.exists(path):
         print(
             "AVISO: {} nao existe. Rode `stack exec haskell-mnist-train` "
-            "primeiro (ver prompt-confusion-matrix.md). "
+            "primeiro para gerar os resultados. "
             "Pulando a figura da matriz de confusao.".format(path),
             file=sys.stderr,
         )

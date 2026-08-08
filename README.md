@@ -1,12 +1,12 @@
 # haskell-mnist
 
 A feedforward neural network that classifies MNIST handwritten digits,
-implemented from scratch in Haskell with **dependently-typed dimensions**.
-Every matrix and vector carries its shape at the type level (via `DataKinds`
-and `GADTs`), so a dimension mismatch — feeding a `Vec 10` where a `Vec 784`
+implemented from scratch in Haskell with **type-indexed dimensions**.
+Every matrix and vector carries its shape at the type level (via `DataKinds`),
+so a dimension mismatch — feeding a `Vec 10` where a `Vec 784`
 is expected, or composing two incompatible layers — is a *compile-time* error
 rather than a runtime crash. Backpropagation is written by hand as a typed
-reverse pass; there is no autodiff library and no BLAS.
+reverse pass; there is no automatic-differentiation library and no BLAS.
 
 ## Key idea: shapes in the types
 
@@ -107,36 +107,54 @@ epoch  3: mean loss 0.2661, test accuracy 94.07%
 epoch 25: mean loss 0.1629, test accuracy 95.49%
 ```
 
-Starting accuracy is ≈ 1/10, confirming the softmax output is near-uniform at
-initialisation. The network reaches its ~94–95% plateau by epoch 3, after which
-the accuracy oscillates from step to step as expected for online SGD with a
-fixed learning rate. See [`results/training-log.md`](results/training-log.md)
-for the full per-epoch log and the confusion-matrix error analysis.
+Starting accuracy is near the 1/10 chance classification rate. The network
+reaches its ~94–95% plateau by epoch 3, after which the accuracy oscillates from
+epoch to epoch; online SGD with a fixed learning rate need not improve that
+metric monotonically. See
+[`results/training-log.md`](results/training-log.md) for the full per-epoch log
+and the confusion-matrix error analysis.
 
 ### Reproducing the figures
 
-The training curves and confusion-matrix plots in `paper/` are generated from
-the CSVs in `results/` by [`scripts/plot_results.py`](scripts/plot_results.py):
+The training curves and confusion-matrix plots are generated under `results/`
+from the CSVs by [`scripts/plot_results.py`](scripts/plot_results.py), then
+copied to `paper/` for inclusion by LaTeX:
 
 ```sh
 pip install -r requirements.txt        # matplotlib, numpy, pandas
 python scripts/plot_results.py         # writes results/fig-training.pdf and fig-confusion.pdf
+cp results/fig-training.pdf paper/
+cp results/fig-confusion.pdf paper/
+python scripts/validate_results.py     # checks data, dataset hashes, and PDF labels
 ```
 
 ## Testing
 
-`stack test` runs 16 QuickCheck properties (100 cases each) covering the linear
-algebra, activations, loss, and — most importantly — the backward passes:
-`Layer.backward` and `Network.networkBackward` are checked against **numerical
-finite-difference gradients**, so the hand-written backprop is verified, not
-just assumed.
+`stack test` runs 17 QuickCheck properties (100 cases each) covering the linear
+algebra, activations, loss, and — most importantly — the backward passes.
+The core property, `prop_network_backward_fd`, validates the complete **gradient
+composition (network + cross-entropy + softmax)** by checking all 23 parameter
+gradients (W₁:12, b₁:3, W₂:6, b₂:2) per-element against **central finite
+differences** (ε = 1e-6, tolerance atol=1e-6, rtol=1e-4). The test network uses
+reduced dimensions (4 inputs → 3 hidden → 2 outputs) for speed; the production
+network is 784 → 64 → 10. Its weights, biases, and inputs are generated
+independently and uniformly in `[-1,1]`. A case is retained only when
+`|z₁| > 2ε·max(1, ‖x‖∞)`, ensuring that no finite-difference perturbation crosses
+the ReLU kink. The recorded 100-case run and 1,000-case stress run had no
+discarded cases.
+
+Use `QC_CASES` to change the number of successful cases per property:
+
+```sh
+stack test                         # 100 cases per property
+QC_CASES=1000 cabal test all       # stress validation
+```
 
 ## Notes and limitations
 
 - Training uses **online SGD** (one gradient step per image), not mini-batches.
-- Matrices and vectors are boxed `Data.Vector`s with no BLAS, so a full run of
-  the defaults takes a few minutes; the emphasis here is on type-level
-  correctness, not throughput.
+- Matrices and vectors are boxed `Data.Vector`s with no BLAS; the emphasis here
+  is on type-level correctness, not competitive throughput.
 - `paper/` contains the LaTeX write-up (`main.tex`, `references.bib`), which
   embeds the figures produced by `scripts/plot_results.py`.
 

@@ -1,0 +1,108 @@
+{
+  "metadata": {
+    "description": "Single training run manifest for haskell-mnist",
+    "created": "2026-07-19",
+    "status": "completed"
+  },
+  "compiler": {
+    "ghc_version": "9.4.8",
+    "build_tool": "stack",
+    "stack_resolver": "lts-21.25",
+    "compilation_flags": ["-Wall (package-wide)", "-O2 (training executable)"],
+    "language_extensions": [
+      "DataKinds",
+      "GADTs",
+      "KindSignatures",
+      "TypeFamilies",
+      "TypeOperators",
+      "ScopedTypeVariables",
+      "FlexibleContexts",
+      "FlexibleInstances",
+      "RankNTypes"
+    ]
+  },
+  "network": {
+    "architecture": "784 → 64 → 10",
+    "description": "Full MNIST classifier (28×28 images → 64 hidden → 10 digit classes)",
+    "input_dimension": 784,
+    "hidden_dimension": 64,
+    "output_dimension": 10,
+    "hidden_activation": "ReLU",
+    "output_activation": "softmax",
+    "loss_function": "cross-entropy",
+    "total_parameters": 50890,
+    "parameter_breakdown": {
+      "w1_weights": 50176,
+      "b1_biases": 64,
+      "w2_weights": 640,
+      "b2_biases": 10
+    }
+  },
+  "training": {
+    "seed": 42,
+    "learning_rate": 0.05,
+    "optimizer": "online SGD (per-example)",
+    "epochs": 25,
+    "batch_size": 1,
+    "training_examples_per_epoch": 60000,
+    "test_examples": 10000,
+    "pixel_normalization": "divide by 255.0 → [0, 1]",
+    "training_order": "fixed (no reshuffling)",
+    "weight_initialization": "He-uniform U(-√(6/fanIn), √(6/fanIn))",
+    "bias_initialization": "zeros"
+  },
+  "results": {
+    "final_epoch": 25,
+    "final_loss": 0.1629,
+    "final_test_accuracy": 0.9549,
+    "initial_test_accuracy": 0.1008,
+    "confusion_matrix_diagonal": 9549,
+    "confusion_matrix_total": 10000,
+    "derived_accuracy_from_confusion": 0.9549
+  },
+  "test_suite": {
+    "total_properties": 17,
+    "total_test_cases_per_property": 100,
+    "test_network_dimensions": "4 → 3 → 2",
+    "test_network_parameters": 23,
+    "finite_difference_step": 1e-6,
+    "tolerance_formula": "|a - n| ≤ 1e-6 + 1e-4 · max(|a|, |n|)",
+    "network_property_generator": "independent uniform components in [-1,1] for W1, b1, W2, b2, and x; label uniform in {0,1}",
+    "relu_kink_filter": "|z1_i| > 2*epsilon*max(1, ||x||_infinity) for every hidden unit",
+    "observed_discards": {
+      "100_case_run": 0,
+      "1000_case_stress_run": 0
+    },
+    "stress_command": "QC_CASES=1000 cabal test all",
+    "gradient_checking_scope": "all 23 parameters (W1:12, b1:3, W2:6, b2:2)",
+    "primary_property": "prop_network_backward_fd"
+  },
+  "dataset": {
+    "name": "MNIST",
+    "training_set_size": 60000,
+    "test_set_size": 10000,
+    "image_format": "28×28 grayscale",
+    "class_range": "0-9",
+    "loading_source": "IDX binary format (http://yann.lecun.com/exdb/mnist/)",
+    "mnist_files": {
+      "train_images": "data/train-images-idx3-ubyte",
+      "train_labels": "data/train-labels-idx1-ubyte",
+      "test_images": "data/t10k-images-idx3-ubyte",
+      "test_labels": "data/t10k-labels-idx1-ubyte"
+    },
+    "sha256_uncompressed": {
+      "train-images-idx3-ubyte": "ba891046e6505d7aadcbbe25680a0738ad16aec93bde7f9b65e87a2fc25776db",
+      "train-labels-idx1-ubyte": "65a50cbbf4e906d70832878ad85ccda5333a97f0f4c3dd2ef09a8a9eef7101c5",
+      "t10k-images-idx3-ubyte": "0fa7898d509279e482958e8ce81c8e77db3f2f8254e26661ceb7762c4d494ce7",
+      "t10k-labels-idx1-ubyte": "ff7bcfd416de33731a308c3f266cc351222c34898ecbeaf847f06e48f7ec33f2"
+    }
+  },
+  "reproducibility_notes": [
+    "Compiler and build flags are pinned via Stack resolver lts-21.25",
+    "Seed 42 ensures reproducibility of weight initialization (but not MNIST data loading, which depends on file contents)",
+    "Training order is fixed across epochs; no random reshuffling",
+    "Metrics and confusion matrix are from the same archived execution",
+    "Test suite validates gradient composition (network → cross-entropy → softmax)",
+    "Central finite differences used with scale-aware tolerance for numerical stability"
+  ]
+}

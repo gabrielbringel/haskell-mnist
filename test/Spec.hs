@@ -7,8 +7,10 @@ module Main (main) where
 
 import           Control.Monad   (unless)
 import           Data.List       (foldl')
+import           System.Environment (lookupEnv)
 import           System.Exit     (exitFailure)
 import           Test.QuickCheck
+import           Text.Read       (readMaybe)
 
 import           GHC.TypeNats    (KnownNat)
 
@@ -24,26 +26,45 @@ import qualified Vec
 -- | Run every property in turn, exiting non-zero if any of them fails.
 main :: IO ()
 main = do
+  configuredCases <- lookupEnv "QC_CASES"
+  let testCases = max 1 (maybe 100 id (configuredCases >>= readMaybe))
+      args = stdArgs { maxSuccess = testCases }
   results <- sequence
-    [ quickCheckResult prop_transpose_involution
-    , quickCheckResult prop_dot_comm
-    , quickCheckResult prop_outer_elements
-    , quickCheckResult prop_mulV_naive
-    , quickCheckResult prop_softmax_sums_to_one
-    , quickCheckResult prop_relu_nonneg
-    , quickCheckResult prop_relu_deriv
-    , quickCheckResult prop_crossentropy_nonneg
-    , quickCheckResult prop_crossentropy_grad_fd
-    , quickCheckResult prop_layer_forward_linear
-    , quickCheckResult prop_layer_backward_dW
-    , quickCheckResult prop_layer_backward_dB
-    , quickCheckResult prop_network_forward_zero
-    , quickCheckResult prop_network_backward_zero
-    , quickCheckResult prop_network_backward_fd
-    , quickCheckResult prop_confusion_total
-    , quickCheckResult prop_confusion_diagonal
+    [ checkWith args prop_transpose_involution
+    , checkWith args prop_dot_comm
+    , checkWith args prop_outer_elements
+    , checkWith args prop_mulV_naive
+    , checkWith args prop_softmax_sums_to_one
+    , checkWith args prop_relu_nonneg
+    , checkWith args prop_relu_deriv
+    , checkWith args prop_crossentropy_nonneg
+    , checkWith args prop_softmax_crossentropy_grad_fd
+    , checkWith args prop_layer_forward_linear
+    , checkWith args prop_layer_backward_dW
+    , checkWith args prop_layer_backward_dB
+    , checkWith args prop_network_forward_zero
+    , checkWith args prop_network_backward_zero
+    , checkWith args prop_network_backward_fd
+    , checkWith args prop_confusion_total
+    , checkWith args prop_confusion_diagonal
     ]
   unless (all isSuccess results) exitFailure
+
+checkWith :: Testable prop => Args -> prop -> IO Result
+checkWith = quickCheckWithResult
+
+-- | Independent, uniformly distributed components in [-1, 1]. These bounded
+-- generators are used by the full-network finite-difference property so its
+-- numerical regime is explicit and reproducible.
+genBoundedVec :: KnownNat n => Gen (Vec n Double)
+genBoundedVec = do
+  xs <- infiniteListOf (choose (-1.0, 1.0))
+  pure (Vec.generate (xs !!))
+
+genBoundedMat :: (KnownNat r, KnownNat c) => Gen (Mat r c Double)
+genBoundedMat = do
+  rows <- infiniteListOf (infiniteListOf (choose (-1.0, 1.0)))
+  pure (Mat.mgenerate (\i j -> rows !! i !! j))
 
 -- | The diagonal of the confusion matrix is exactly the number of correct
 -- predictions — tying the matrix back to 'Network.predict' / 'Network.accuracy'.
@@ -83,11 +104,12 @@ prop_crossentropy_nonneg logits i = Loss.crossEntropy yhat y >= 0
     k    = i `mod` 10
     y    = Vec.generate (\j -> if j == k then 1.0 else 0.0) :: Vec 10 Double
 
--- | The gradient of cross-entropy w.r.t. logits (before softmax) agrees with
--- central finite differences of @crossEntropy . softmax@. Logits are compressed
--- to a bounded band to prevent softmax underflow.
-prop_crossentropy_grad_fd :: Vec 10 Double -> Int -> Bool
-prop_crossentropy_grad_fd rawLogits i =
+-- | The gradient of @crossEntropy . softmax@ w.r.t. logits (before softmax)
+-- agrees with central finite differences. This validates the analytical
+-- derivative of the composed loss function with respect to pre-softmax logits.
+-- Logits are compressed to a bounded band to prevent softmax underflow.
+prop_softmax_crossentropy_grad_fd :: Vec 10 Double -> Int -> Bool
+prop_softmax_crossentropy_grad_fd rawLogits i =
     and [ close (Vec.vindex grad k) (numerical k) | k <- [0 .. 9] ]
   where
     logits = Vec.vmap (\x -> 4 * tanh (x / 4)) rawLogits
@@ -173,45 +195,126 @@ prop_mulV_naive m v = Vec.toList (Mat.mulV m v) == naive
       | i <- [0 .. 3] ]
 
 -- | The network backward pass agrees with finite differences at differentiable
--- points: perturb each weight in the hidden layer by +/- eps, compute the
--- change in a scalar loss (dZ₂ · z₂), and compare to the analytical gradient
--- component. Cases at the ReLU kink are discarded because a central difference
--- across zero is not comparable to the implementation's convention relu'(0)=0.
-prop_network_backward_fd :: Mat 3 4 Double -> Mat 2 3 Double -> Vec 4 Double -> Vec 2 Double -> Property
-prop_network_backward_fd w1 w2 x dZ2 =
-  differentiable ==>
-    conjoin
-      [ counterexample ("hidden weight " ++ show (i, j))
-          (close (Mat.mindex dW1 i j) (numerical i j))
-      | i <- [0 .. 2], j <- [0 .. 3]
-      ]
-  where
-    bias1 = Vec.replicate 0 :: Vec 3 Double
-    bias2 = Vec.replicate 0 :: Vec 2 Double
-    net = Network.Network
-      { Network.hidden = Layer.Layer w1 bias1
-      , Network.output = Layer.Layer w2 bias2
-      } :: Network.Network 4 3 2
-    (z1, a1, _) = Network.networkForward net x
-    (dW1, _, _, _, _) = Network.networkBackward net x z1 a1 dZ2
-    close a n = abs (a - n) < 1e-4 * (1 + abs a) + 1e-3
-    eps = 1e-6
-    maxInput = maximum (1 : map abs (Vec.toList x))
-    differentiable = all ((> eps * maxInput) . abs) (Vec.toList z1)
-    netAt w1' = Network.Network
-      { Network.hidden = Layer.Layer w1' bias1
-      , Network.output = Layer.Layer w2 bias2
-      }
-    lossAt w1' =
-      let (_, _, z2') = Network.networkForward (netAt w1') x
-      in Vec.dot dZ2 z2'
-    numerical i j =
-      let perturb sign =
-            Mat.mgenerate (\i' j' ->
-              if i' == i && j' == j
-              then Mat.mindex w1 i j + sign * eps
-              else Mat.mindex w1 i' j')
-      in (lossAt (perturb 1) - lossAt (perturb (-1))) / (2 * eps)
+-- points. Validates the full gradient composition (network + cross-entropy loss)
+-- by perturbing each of the 23 parameters (W₁:12, b₁:3, W₂:6, b₂:2) and
+-- checking the analytical gradient against central finite differences.
+-- The loss is: Loss(logits) = crossEntropy(softmax(logits), y).
+-- Cases at the ReLU kink are discarded because a central difference across
+-- zero is not comparable to the implementation's convention relu'(0)=0.
+prop_network_backward_fd :: Property
+prop_network_backward_fd =
+  forAll (genBoundedMat :: Gen (Mat 3 4 Double)) $ \w1 ->
+  forAll (genBoundedVec :: Gen (Vec 3 Double)) $ \bias1 ->
+  forAll (genBoundedMat :: Gen (Mat 2 3 Double)) $ \w2 ->
+  forAll (genBoundedVec :: Gen (Vec 2 Double)) $ \bias2 ->
+  forAll (genBoundedVec :: Gen (Vec 4 Double)) $ \x ->
+  forAll (choose (0, 1) :: Gen Int) $ \labelIdx ->
+    let
+        y = Vec.generate (\j -> if j == labelIdx then 1.0 else 0.0) :: Vec 2 Double
+        net = Network.Network
+          { Network.hidden = Layer.Layer w1 bias1
+          , Network.output = Layer.Layer w2 bias2
+          } :: Network.Network 4 3 2
+        (z1, a1, z2) = Network.networkForward net x
+        dZ2 = Loss.crossEntropyGrad (Activation.softmax z2) y
+        (dW1, dB1, dW2, dB2, _) = Network.networkBackward net x z1 a1 dZ2
+        -- Tolerance: abs(analytical - numerical) <= atol + rtol * max(abs analytical, abs numerical)
+        close a n = abs (a - n) <= 1e-6 + 1e-4 * max (abs a) (abs n)
+        eps = 1e-6
+        -- Perturbing a hidden weight changes z1 by eps*x[j], while perturbing
+        -- a hidden bias changes it by eps. A factor of two leaves numerical
+        -- margin on both sides of the ReLU kink.
+        z1List = Vec.toList z1
+        maxInput = maximum (1 : map abs (Vec.toList x))
+        kinkMargin = 2 * eps * maxInput
+        differentiable = all (\z -> abs z > kinkMargin) z1List
+        lossAt z2' = Loss.crossEntropy (Activation.softmax z2') y
+        numericalW1 i j =
+          let netW1Plus = Network.Network
+                { Network.hidden = Layer.Layer (Mat.mgenerate (\i' j' ->
+                    if i' == i && j' == j then Mat.mindex w1 i j + eps
+                    else Mat.mindex w1 i' j')) bias1
+                , Network.output = Layer.Layer w2 bias2
+                }
+              netW1Minus = Network.Network
+                { Network.hidden = Layer.Layer (Mat.mgenerate (\i' j' ->
+                    if i' == i && j' == j then Mat.mindex w1 i j - eps
+                    else Mat.mindex w1 i' j')) bias1
+                , Network.output = Layer.Layer w2 bias2
+                }
+              (_, _, z2Plus) = Network.networkForward netW1Plus x
+              (_, _, z2Minus) = Network.networkForward netW1Minus x
+          in (lossAt z2Plus - lossAt z2Minus) / (2 * eps)
+        numericalB1 i =
+          let b1Plus = Vec.generate (\i' -> if i' == i then Vec.vindex bias1 i + eps
+                                            else Vec.vindex bias1 i') :: Vec 3 Double
+              b1Minus = Vec.generate (\i' -> if i' == i then Vec.vindex bias1 i - eps
+                                             else Vec.vindex bias1 i') :: Vec 3 Double
+              netB1Plus = Network.Network
+                { Network.hidden = Layer.Layer w1 b1Plus
+                , Network.output = Layer.Layer w2 bias2
+                }
+              netB1Minus = Network.Network
+                { Network.hidden = Layer.Layer w1 b1Minus
+                , Network.output = Layer.Layer w2 bias2
+                }
+              (_, _, z2Plus) = Network.networkForward netB1Plus x
+              (_, _, z2Minus) = Network.networkForward netB1Minus x
+          in (lossAt z2Plus - lossAt z2Minus) / (2 * eps)
+        numericalW2 i j =
+          let netW2Plus = Network.Network
+                { Network.hidden = Layer.Layer w1 bias1
+                , Network.output = Layer.Layer (Mat.mgenerate (\i' j' ->
+                    if i' == i && j' == j then Mat.mindex w2 i j + eps
+                    else Mat.mindex w2 i' j')) bias2
+                }
+              netW2Minus = Network.Network
+                { Network.hidden = Layer.Layer w1 bias1
+                , Network.output = Layer.Layer (Mat.mgenerate (\i' j' ->
+                    if i' == i && j' == j then Mat.mindex w2 i j - eps
+                    else Mat.mindex w2 i' j')) bias2
+                }
+              (_, _, z2Plus) = Network.networkForward netW2Plus x
+              (_, _, z2Minus) = Network.networkForward netW2Minus x
+          in (lossAt z2Plus - lossAt z2Minus) / (2 * eps)
+        numericalB2 i =
+          let b2Plus = Vec.generate (\i' -> if i' == i then Vec.vindex bias2 i + eps
+                                            else Vec.vindex bias2 i') :: Vec 2 Double
+              b2Minus = Vec.generate (\i' -> if i' == i then Vec.vindex bias2 i - eps
+                                             else Vec.vindex bias2 i') :: Vec 2 Double
+              netB2Plus = Network.Network
+                { Network.hidden = Layer.Layer w1 bias1
+                , Network.output = Layer.Layer w2 b2Plus
+                }
+              netB2Minus = Network.Network
+                { Network.hidden = Layer.Layer w1 bias1
+                , Network.output = Layer.Layer w2 b2Minus
+                }
+              (_, _, z2Plus) = Network.networkForward netB2Plus x
+              (_, _, z2Minus) = Network.networkForward netB2Minus x
+          in (lossAt z2Plus - lossAt z2Minus) / (2 * eps)
+    in differentiable ==>
+      conjoin $
+        -- Test W1 (3x4 = 12 elements)
+        [ counterexample ("W1 (" ++ show i ++ "," ++ show j ++ ")")
+            (close (Mat.mindex dW1 i j) (numericalW1 i j))
+        | i <- [0 .. 2], j <- [0 .. 3]
+        ] ++
+        -- Test b1 (3 elements)
+        [ counterexample ("b1 " ++ show i)
+            (close (Vec.vindex dB1 i) (numericalB1 i))
+        | i <- [0 .. 2]
+        ] ++
+        -- Test W2 (2x3 = 6 elements)
+        [ counterexample ("W2 (" ++ show i ++ "," ++ show j ++ ")")
+            (close (Mat.mindex dW2 i j) (numericalW2 i j))
+        | i <- [0 .. 1], j <- [0 .. 2]
+        ] ++
+        -- Test b2 (2 elements)
+        [ counterexample ("b2 " ++ show i)
+            (close (Vec.vindex dB2 i) (numericalB2 i))
+        | i <- [0 .. 1]
+        ]
 
 -- | For a network with zero weights, ReLU'(0) = 0 kills the gradient flow
 -- through the hidden layer. So dW₁, dB₁, dW₂, and dX should all be zero.

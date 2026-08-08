@@ -613,40 +613,137 @@ runs.
 The type system guarantees that shapes line up, but it cannot catch a
 sign error or a transposed axis in a hand-written gradient, since such a mistake
 is still well-shaped. We therefore verify the numerical content of the
-implementation with a property-based test suite: $17$ QuickCheck properties, each
-run on $100$ randomized inputs, all passing. The properties cover the shaped
-linear algebra (transpose involution, matrix--vector product against a naive
-reference, outer-product elements), the activations and loss, and---most
-importantly---the backward passes. Finite-difference checking of a backward pass
-has a direct precedent in typed Haskell: Grenade's test suite compares a
-backpropagated derivative with a finite-difference
-perturbation~\cite{campbell2016grenade}. Our three gradient properties enumerate
-the selected tensors per-element. \texttt{prop\_crossentropy\_grad\_fd} verifies
-the gradient of cross-entropy with respect to the network's raw logits (before
-softmax): for each logit entry, it perturbs by \(\pm\varepsilon\) and compares the
-resulting central finite difference of \(L = \mathrm{crossEntropy}(\mathrm{softmax}(\mathbf{z})\ \mathbf{y})\)
-against the analytical gradient component. To prevent softmax underflow---which
-would make \(\log 0 = -\infty\) and break the finite-difference computation---raw
-logits are compressed to the band \([-4, 4]\) via \(\mathbf{z} = 4 \cdot \tanh(\mathbf{z}_{\mathrm{raw}} / 4)\), ensuring all softmax probabilities remain well-conditioned (\(\gtrsim 3 \times 10^{-5}\)). \texttt{prop\_layer\_backward\_dW} perturbs each
-individual weight entry \(W[i,j]\) of a single layer by \(\pm\varepsilon\) and
-compares the resulting central finite difference of the surrogate loss
-\(L = \mathrm{d}\mathbf{z}\cdot\mathbf{z}\) against the matching analytical
-gradient component \(\mathrm{d}W[i,j]\); \texttt{prop\_network\_backward\_fd}
-does the same for every hidden-weight entry \(W_1[i,j]\) of the composed
-two-layer network, propagating each perturbation through the full forward and
-backward pass against the surrogate loss
-\(L = \mathrm{d}\mathbf{z}_2\cdot\mathbf{z}_2\). Each comparison is a central
-finite difference,
-\(\bigl(L(\theta+\varepsilon) - L(\theta-\varepsilon)\bigr)/2\varepsilon\), so the
-hand-derived backpropagation of \Cref{sec:backprop} is checked, entry by entry,
-against the definition of the derivative rather than assumed. This per-element
-granularity is a deliberate design decision: checking one weight component at a
-time means a discrepancy localizes to that specific entry, rather than only
-confirming that some aggregate directional response is roughly correct.
-The network property discards cases whose perturbation crosses a hidden
-pre-activation of zero: ReLU is not differentiable there, so a central
-difference across the kink is not comparable to the implementation's stated
-convention \(\mathrm{ReLU}'(0)=0\).
+implementation with a property-based test suite of $17$ QuickCheck properties,
+each run on $100$ randomized test cases by default. All properties pass both in
+the recorded default run and in a $1\,000$-case stress run.
+
+\paragraph{The 17 properties: design and enumeration.}
+The test suite is organized into five categories: shaped linear algebra, activations
+and loss, linear layers, full network composition, and evaluation metrics.
+\Cref{tab:properties} lists all seventeen properties with the forms they check.
+
+\begin{table*}[t]
+  \centering
+  \caption{The 17 QuickCheck properties. Each runs on $100$ randomized inputs
+    (or $100$ cases with automatic discard). Test networks use reduced dimensions:
+    $4 \to 3 \to 2$ (cf.\ \Cref{sec:res:limits}). All entries are verified
+    component-by-component where applicable. Finite-difference tests use central
+    differences with step $\varepsilon = 10^{-6}$; see text for tolerance formulas.}
+  \label{tab:properties}
+  \begin{tabular}{l l}
+    \toprule
+    \textbf{Property Name} & \textbf{Validates} \\
+    \midrule
+    \multicolumn{2}{l}{\emph{Linear Algebra}} \\
+    \texttt{prop\_transpose\_involution} & $\mathrm{transpose}(\mathrm{transpose}(M)) = M$ \\
+    \texttt{prop\_dot\_comm} & $\mathbf{u} \cdot \mathbf{v} = \mathbf{v} \cdot \mathbf{u}$ (exact) \\
+    \texttt{prop\_outer\_elements} & $\mathtt{outer}(\mathbf{u}, \mathbf{v})[i,j] = u_i v_j$ \\
+    \texttt{prop\_mulV\_naive} & Matrix--vector product vs.\ list reference \\
+    \midrule
+    \multicolumn{2}{l}{\emph{Activations \& Loss}} \\
+    \texttt{prop\_softmax\_sums\_to\_one} & $\sum_i \mathrm{softmax}(\mathbf{z})_i = 1$ \\
+    \texttt{prop\_relu\_nonneg} & $\mathrm{ReLU}(x) \ge 0$ \\
+    \texttt{prop\_relu\_deriv} & $\mathrm{ReLU}'(x) = \begin{cases} 1 & x > 0 \\ 0 & x \le 0 \end{cases}$ \\
+    \texttt{prop\_crossentropy\_nonneg} & $L = -\sum_i y_i \log p_i \ge 0$ \\
+    \texttt{prop\_softmax\_crossentropy\_grad\_fd} & Gradient of $\mathrm{crossEntropy}(\mathrm{softmax}(\mathbf{z}), \mathbf{y})$ \\
+    \midrule
+    \multicolumn{2}{l}{\emph{Linear Layer}} \\
+    \texttt{prop\_layer\_forward\_linear} & Forward pass linearity: $f(\alpha \mathbf{x}) = \alpha f(\mathbf{x})$ \\
+    \texttt{prop\_layer\_backward\_dW} & Layer weight gradient: $\mathrm{d}W = \mathrm{d}\mathbf{z} \otimes \mathbf{x}$ \\
+    \texttt{prop\_layer\_backward\_dB} & Layer bias gradient: $\mathrm{d}\mathbf{b} = \mathrm{d}\mathbf{z}$ \\
+    \midrule
+    \multicolumn{2}{l}{\emph{Network \& Backpropagation}} \\
+    \texttt{prop\_network\_forward\_zero} & Zero-weight network: $f(\mathbf{x}) = \mathbf{0}$ \\
+    \texttt{prop\_network\_backward\_zero} & Zero-weight backprop: $\mathrm{d}W_1, \mathrm{d}\mathbf{b}_1, \mathrm{d}W_2 = \mathbf{0}$ \\
+    \texttt{prop\_network\_backward\_fd} & Full network gradients vs.\ finite differences \\
+    \midrule
+    \multicolumn{2}{l}{\emph{Evaluation}} \\
+    \texttt{prop\_confusion\_total} & Confusion matrix sum = dataset size \\
+    \texttt{prop\_confusion\_diagonal} & Diagonal sum = number of correct predictions \\
+    \bottomrule
+  \end{tabular}
+\end{table*}
+
+\paragraph{Per-element finite-difference verification.}
+Finite-difference checking of a backward pass has a direct precedent in typed
+Haskell: Grenade's test suite compares backpropagated derivatives with
+finite-difference perturbations~\cite{campbell2016grenade}. Our three gradient
+properties enumerate the selected tensors per-element, a deliberate design choice
+that localizes any discrepancy to the specific entry where it occurs rather than
+confirming only an aggregate response. Each component is perturbed by $\pm\varepsilon$,
+and the central finite difference $\bigl(L(\theta+\varepsilon) - L(\theta-\varepsilon)\bigr)/2\varepsilon$
+is compared against the analytical gradient component.
+
+\paragraph{Softmax and cross-entropy: numerical scheme.}
+The loss is $L = \mathrm{crossEntropy}(\mathrm{softmax}(\mathbf{z}), \mathbf{y})$, where
+$\mathbf{z}$ is a pre-softmax logit vector and $\mathbf{y}$ is one-hot. The softmax
+is computed in its numerically stable form:
+\begin{align}
+  m &= \max_i z_i, \\
+  p_i &= \frac{\exp(z_i - m)}{\sum_j \exp(z_j - m)},
+\end{align}
+and the cross-entropy loss is $L = -\sum_i y_i \log p_i$, with the convention that
+$0 \log 0 = 0$ (omit terms where $y_i = 0$). No clipping is applied. A probability
+$p_i$ can still underflow to zero, yielding $L = \infty$, which is numerically
+correct but can destabilize finite-difference perturbations. To prevent this in
+\texttt{prop\_softmax\_crossentropy\_grad\_fd}, raw logits are compressed to the band
+$[-4, 4]$ via the preventive bounding $\mathbf{z} = 4 \cdot \tanh(\mathbf{z}_{\mathrm{raw}} / 4)$,
+ensuring all softmax probabilities remain well-conditioned ($\gtrsim 3 \times 10^{-5}$).
+The network backpropagation property (\texttt{prop\_network\_backward\_fd}) does
+\emph{not} apply this compression. Instead, every component of its weights,
+biases, and inputs is drawn independently and uniformly from $[-1,1]$. For the
+reduced $4\to3\to2$ network this keeps the resulting logits in a well-conditioned
+range while exercising the actual, uncompressed softmax implementation.
+
+\paragraph{Gradient properties: layer and network.}
+\texttt{prop\_layer\_backward\_dW} verifies each individual weight entry $W[i,j]$ of
+a single layer against the surrogate loss $L = \mathrm{d}\mathbf{z} \cdot \mathbf{z}$.
+\texttt{prop\_network\_backward\_fd} extends this to the full two-layer network and
+verifies every element of the four parameter tensors ($W_1, \mathbf{b}_1, W_2, \mathbf{b}_2$):
+\begin{itemize}
+  \item $W_1$: $3 \times 4 = 12$ elements,
+  \item $\mathbf{b}_1$: $3$ elements,
+  \item $W_2$: $2 \times 3 = 6$ elements,
+  \item $\mathbf{b}_2$: $2$ elements,
+\end{itemize}
+for a total of $23$ gradient components per test case. The full network property
+propagates each perturbation through the complete forward and backward pass against
+the loss $L = \mathrm{crossEntropy}(\mathrm{softmax}(\mathbf{z}_2), \mathbf{y})$,
+verifying that \Cref{sec:backprop}'s hand-derived gradients match the definition of
+the derivative rather than being assumed.
+
+\paragraph{Handling non-differentiable points.}
+The network property discards test cases whose perturbation crosses a hidden
+pre-activation of zero: ReLU is not differentiable at zero, so a central difference
+across the kink is not comparable to the implementation's stated convention
+$\mathrm{ReLU}'(0) = 0$. The discard filter is:
+\begin{align}
+  \text{Keep case if:} \quad
+  |z_{1,i}| > 2\varepsilon\max(1,\lVert\mathbf{x}\rVert_\infty)
+  \quad \forall i.
+\end{align}
+This margin covers both a hidden-bias perturbation of size $\varepsilon$ and the
+largest hidden-weight perturbation $\varepsilon |x_j|$, with a factor of two for
+rounding. No cases were discarded in either the recorded $100$-case run or the
+$1\,000$-case stress run.
+
+\paragraph{Numerical parameters.}
+For the full-network gradient property, weights, biases, and inputs have
+independent components drawn uniformly from $[-1,1]$, and class labels are
+uniformly sampled from $\{0,1\}$. The other properties use QuickCheck's standard
+\texttt{Arbitrary} generators, with the explicit logit compression described
+above where needed. The finite-difference step size is $\varepsilon = 10^{-6}$.
+Two scale-aware comparison tolerances are used:
+\begin{align}
+  \texttt{prop\_softmax\_crossentropy\_grad\_fd}, \texttt{prop\_layer\_backward\_dW}:
+    \quad &|a - n| < 10^{-4}(1 + |a|) + 10^{-3}, \\
+  \texttt{prop\_network\_backward\_fd}: \quad
+    &|a - n| \le 10^{-6} + 10^{-4} \cdot \max(|a|, |n|).
+\end{align}
+These tolerances account for floating-point rounding at the different numerical
+scales exercised by the two generator regimes. The default suite uses $100$
+successful cases per property; setting \texttt{QC\_CASES=1000} runs the recorded
+stress configuration.
 
 \subsection{Training and accuracy}
 \label{sec:res:training}
@@ -721,19 +818,20 @@ dividing by 255.0. The training set is processed in its original order for every
 epoch with no reshuffling between epochs; this is a limitation of the training
 procedure that may lead to oscillations in accuracy, as observed in the reported
 runs (e.g., dips from epoch~3's plateau to lower values in epochs~6 and beyond).
-The finite-difference tests use a step size \(\varepsilon = 10^{-6}\) and a
-scale-aware tolerance \(|a - n| < 10^{-4}(1 + |a|) + 10^{-3}\) to account for
-the wide range of weight magnitudes produced by QuickCheck's arbitrary
-generators. Test networks are reduced-dimension instances of the main
-architecture (4 inputs, 3 hidden, 2 outputs) for tractable property enumeration.
-All code, results, and experiment logs are archived in a public GitHub repository:
-\url{https://github.com/gabrielbringel/haskell-mnist}. The MNIST dataset must be
-obtained separately: download the four IDX-format files
-(\texttt{train-images-idx3-ubyte}, \texttt{train-labels-idx1-ubyte},
+The finite-difference tests use a step size \(\varepsilon = 10^{-6}\) and scale-aware
+tolerances detailed in \Cref{sec:res:correct}. Test networks are reduced-dimension
+instances of the main architecture (4 inputs, 3 hidden, 2 outputs) for tractable
+property enumeration. All code, results, and experiment logs are archived in a public
+GitHub repository: \url{https://github.com/gabrielbringel/haskell-mnist}. The MNIST
+dataset~\cite{lecun-mnist} must be obtained separately: download the four IDX-format
+files (\texttt{train-images-idx3-ubyte}, \texttt{train-labels-idx1-ubyte},
 \texttt{t10k-images-idx3-ubyte}, \texttt{t10k-labels-idx1-ubyte}) from the MNIST
 archive, decompress them with \texttt{gunzip} if necessary, and place them in a
 \texttt{data/} directory; the loader validates the IDX magic numbers (2051 for
-images, 2049 for labels) and confirms each image is 28~$\times$~28 pixels.
+images, 2049 for labels) and confirms each image is 28~$\times$~28 pixels. Exact
+SHA-256 checksums of the four uncompressed files used for the reported run are
+recorded in \texttt{results/run-manifest.json} and checked by
+\texttt{scripts/validate\_results.py}.
 
 %% =============================================================================
 %% 6. Conclusion
